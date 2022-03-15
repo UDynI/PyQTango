@@ -20,6 +20,9 @@ class QAttribute(QtWidgets.QWidget):
     # Internal Tango change event signal
     __tango_event = QtCore.pyqtSignal(PT.EventData)
 
+    # On Update signal
+    updated = QtCore.pyqtSignal(PT.DeviceAttribute)
+
     # Dev-state style
     __devstate_style_common = "border-radius:3px;border: 1px solid black;"
     __devstate_style = {PT.DevState.ALARM: "background-color: rgb(255, 140, 0);color: rgb(0, 0, 0);",        # Black on orange
@@ -352,6 +355,9 @@ class QAttribute(QtWidgets.QWidget):
                 if self.__cfg.data_type == PT.CmdArgType.DevState:
                     self.w_value.setText(str(attr_value))
                     self.w_value.setStyleSheet(self.__devstate_style_common+self.__devstate_style[attr_value])
+
+            # Emit updated event
+            self.updated.emit(ev.attr_value)
 
         elif self.__cfg.data_format == PT.AttrDataFormat.SPECTRUM:
             print("[E] Events for spectrum attributes are not supported")
