@@ -4,6 +4,7 @@ from .AttributeTree import QArchivedAttributeTree
 from .QStatusLed import QStatusLed
 from .QAttribute import QAttribute
 from .QCommandExecuter import QCommandExecuter
+from .QTangoMainWindow import QTangoMainWindow
 
 # QDigitDial
 from .QDigitDial import QDigitDial
