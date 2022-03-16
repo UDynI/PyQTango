@@ -292,35 +292,35 @@ class QDeviceTree(QtWidgets.QTreeView):
         self.setModel(self.model)
 
         style = """
-QTreeView::branch:has-siblings:!adjoins-item {
+QTreeView::branch:has-siblings:!adjoins-item {{
     border-image: url({0:s}) 0;
-}
+}}
 
-QTreeView::branch:has-siblings:adjoins-item {
+QTreeView::branch:has-siblings:adjoins-item {{
     border-image: url({1:s}) 0;
-}
+}}
 
-QTreeView::branch:!has-children:!has-siblings:adjoins-item {
+QTreeView::branch:!has-children:!has-siblings:adjoins-item {{
     border-image: url({2:s}) 0;
-}
+}}
 
 QTreeView::branch:has-children:!has-siblings:closed,
-QTreeView::branch:closed:has-children:has-siblings {
+QTreeView::branch:closed:has-children:has-siblings {{
     border-image: none;
     image: url({3:s});
-}
+}}
 
 QTreeView::branch:open:has-children:!has-siblings,
-QTreeView::branch:open:has-children:has-siblings  {
+QTreeView::branch:open:has-children:has-siblings  {{
     border-image: none;
     image: url({4:s});
-}
-""".format(
-    get_image_path("vline.png"),
-    get_image_path("branch-more.png"),
-    get_image_path("branch-end.png"),
-    get_image_path("branch-closed.png"),
-    get_image_path("branch-open.png"),
-)
-#        QtWidgets.qApp.setStyleSheet(style)
+}}
+"""
+        style = style.format(
+            get_image_path("vline.png"),
+            get_image_path("branch-more.png"),
+            get_image_path("branch-end.png"),
+            get_image_path("branch-closed.png"),
+            get_image_path("branch-open.png"),
+        )
         self.setStyleSheet(style)

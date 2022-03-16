@@ -121,37 +121,37 @@ class QBaseAttributeTree(QtWidgets.QTreeView):
             self.resize(parent.size())
 
         style = """
-QTreeView::branch:has-siblings:!adjoins-item {
+QTreeView::branch:has-siblings:!adjoins-item {{
     border-image: url({0:s}) 0;
-}
+}}
 
-QTreeView::branch:has-siblings:adjoins-item {
+QTreeView::branch:has-siblings:adjoins-item {{
     border-image: url({1:s}) 0;
-}
+}}
 
-QTreeView::branch:!has-children:!has-siblings:adjoins-item {
+QTreeView::branch:!has-children:!has-siblings:adjoins-item {{
     border-image: url({2:s}) 0;
-}
+}}
 
 QTreeView::branch:has-children:!has-siblings:closed,
-QTreeView::branch:closed:has-children:has-siblings {
+QTreeView::branch:closed:has-children:has-siblings {{
     border-image: none;
     image: url({3:s});
-}
+}}
 
 QTreeView::branch:open:has-children:!has-siblings,
-QTreeView::branch:open:has-children:has-siblings  {
+QTreeView::branch:open:has-children:has-siblings  {{
     border-image: none;
     image: url({4:s});
-}
-""".format(
-    get_image_path("vline.png"),
-    get_image_path("branch-more.png"),
-    get_image_path("branch-end.png"),
-    get_image_path("branch-closed.png"),
-    get_image_path("branch-open.png"),
-)
-#        QtWidgets.qApp.setStyleSheet(style)
+}}
+"""
+        style = style.format(
+            get_image_path("vline.png"),
+            get_image_path("branch-more.png"),
+            get_image_path("branch-end.png"),
+            get_image_path("branch-closed.png"),
+            get_image_path("branch-open.png"),
+        )
         self.setStyleSheet(style)
 
 
@@ -175,13 +175,38 @@ class QArchivedAttributeTree(QBaseAttributeTree):
         # Get attribute list
         attrs = extractor.GetAttNameAll()
         attr_list = []
-        for a in attrs:
+
+        if parent is not None:
+            app = QtWidgets.QApplication.instance()
+            progress = QtWidgets.QProgressDialog(parent)
+            progress.setLabelText("Scanning attributes for configuration...")
+            progress.setMinimum(0)
+            progress.setMaximum(len(attrs))
+            progress.setWindowModality(QtCore.Qt.WindowModal)
+            progress.setAutoClose(True)
+            progress.setValue(0)
+            progress.show()
+            app.processEvents()
+
+        for i, a in enumerate(attrs):
+            if parent is not None:
+                progress.setValue(i)
+                app.processEvents()
+
             try:
+                if parent is not None and progress.wasCanceled():
+                    print("[D] Attribute scanning canceled")
+                    raise PT.DevFailed()
                 ap = PT.AttributeProxy(a)
                 conf = ap.get_config()
                 attr_list.append({'attribute': a, 'data_format': conf.data_format, 'data_type': conf.data_type})
+                print("[D] configured attribute {0:s}".format(a))
             except PT.DevFailed:
                 attr_list.append({'attribute': a})
+
+        print("[D] Attribute scanning done")
+        if parent is not None:
+            progress.close()
 
         # Common parent constructor
         QBaseAttributeTree.__init__(self, attr_list, resize=resize, label=label, parent=parent)
