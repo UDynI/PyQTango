@@ -326,7 +326,7 @@ class QAttribute(QtWidgets.QWidget):
             if isinstance(self.w_value, QtWidgets.QLineEdit):
                 self.w_value.blockSignals(True)
                 if self.__isNumeric(self.__cfg.data_type):
-                    self.w_value.setText(self.__format_value(self.__cfg.format, attr_value))
+                    self.w_value.setText(self.__format_value(attr_value))
 
                 elif self.__cfg.data_type == PT.CmdArgType.DevEnum:
                     self.w_value.setText(str(self.__enum_labels[attr_value]))
@@ -367,9 +367,10 @@ class QAttribute(QtWidgets.QWidget):
             print("[E] Events for image attributes are not supported")
             return
 
-    def __format_value(self, cfg_fmt, value):
+    def __format_value(self, value):
         fmt = "{0"
-        if cfg_fmt != "":
+        if self.__cfg.format != "":
+            cfg_fmt = self.__cfg.format.lower()
             m = re.match("%(\d*)\.?(\d*)([diufegx]+)", cfg_fmt)
             if m is not None:
                 w = m.groups()[0]
@@ -394,6 +395,11 @@ class QAttribute(QtWidgets.QWidget):
         else:
             fmt += "!s"
         fmt += '}'
+        try:
+            if self.__cfg.unit != "":
+                fmt += " " + self.__cfg.unit
+        except Exception:
+            pass
         return fmt.format(value)
 
     def __isNumeric(self, data_type):
@@ -492,7 +498,7 @@ class QAttribute(QtWidgets.QWidget):
             value = self.attr.read().value
             if isinstance(self.w_value, QtWidgets.QLineEdit):
                 if self.__isNumeric(self.__cfg.data_type):
-                    self.w_value.setText(self.__format_value(self.__cfg.format, value))
+                    self.w_value.setText(self.__format_value(value))
                 else:
                     self.w_value.setText(str(value))
             elif isinstance(self.w_value, QtWidgets.QSpinBox) or isinstance(self.w_value, QtWidgets.QDoubleSpinBox):
