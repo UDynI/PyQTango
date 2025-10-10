@@ -403,8 +403,7 @@ class QAttribute(QtWidgets.QWidget):
         return fmt.format(value)
 
     def __isNumeric(self, data_type):
-        __numeric_types = (PT.CmdArgType.DevInt,
-                           PT.CmdArgType.DevLong,
+        __numeric_types = (PT.CmdArgType.DevLong,
                            PT.CmdArgType.DevLong64,
                            PT.CmdArgType.DevShort,
                            PT.CmdArgType.DevUChar,
@@ -416,6 +415,10 @@ class QAttribute(QtWidgets.QWidget):
         return data_type in __numeric_types
 
     def __check_value(self, value, data_type):
+        if self.__unit is not None and self.__unit != "":
+            # Remove unit from value string
+            value = value.replace(self.__unit, "").strip()
+
         if data_type == PT.CmdArgType.DevBoolean:
             return bool(value)
         elif data_type == PT.CmdArgType.DevDouble or data_type == PT.CmdArgType.DevFloat:
@@ -428,8 +431,7 @@ class QAttribute(QtWidgets.QWidget):
                 return int(value)
             except ValueError:
                 return None
-        elif data_type in (PT.CmdArgType.DevInt,
-                           PT.CmdArgType.DevLong,
+        elif data_type in (PT.CmdArgType.DevLong,
                            PT.CmdArgType.DevLong64,
                            PT.CmdArgType.DevShort,
                            PT.CmdArgType.DevUChar,
