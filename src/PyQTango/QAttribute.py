@@ -149,10 +149,6 @@ class QAttribute(QtWidgets.QWidget):
         # Read attribute config
         self.__cfg = self.attr.get_config()
 
-        if self.__cfg.data_type == PT.CmdArgType.DevPipeBlob or self.__cfg.data_type == PT.CmdArgType.DevEncoded:
-            # Unsupported data type
-            raise NotImplementedError("Attribute data type not supported")
-
         if self.__cfg.data_format == PT.AttrDataFormat.SCALAR:
 
             if self.__cfg.writable == PT.AttrWriteType.READ:
@@ -286,6 +282,9 @@ class QAttribute(QtWidgets.QWidget):
         elif self.__cfg.data_format == PT.AttrDataFormat.IMAGE:
             raise NotImplementedError("Image attributes are not yet implemented")
 
+        else:
+            raise NotImplementedError("Unexpected data format '{0!s}'".format(self.__cfg.data_format))
+
         # Add widgets to layout
         self.layout.addWidget(self.w_value)
         if self.c_button is not None:
@@ -309,8 +308,6 @@ class QAttribute(QtWidgets.QWidget):
         if ev.attr_value.name.lower() != self.attr.name().lower():
             print("[E] Attribute name does not match! ({0} != {1})".format(ev.attr_value.name, self.attr.name()))
             return
-
-        print("[D] Got event")
 
         # Get attribute value
         attr_value = ev.attr_value.value

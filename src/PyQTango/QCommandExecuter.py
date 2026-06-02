@@ -7,6 +7,7 @@ Created on Tue May 12 11:13:29 2020
 
 import time
 import numpy as np
+import ast
 from PyQt5 import QtCore
 from PyQt5 import QtWidgets
 from PyQt5 import QtGui
@@ -63,7 +64,7 @@ class QCommandExecuter(QtWidgets.QWidget):
 
     def device(self):
         if self.__dev is not None:
-            self.__dev.name()
+            return self.__dev.name()
         else:
             return None
 
@@ -83,6 +84,7 @@ class QCommandExecuter(QtWidgets.QWidget):
             self.execute.setDisabled(True)
             self.arg.setDisabled(True)
             self.__dev = None
+            return
 
         cmd_list = list(self.__dev.get_command_list())
         cmd_list.sort()
@@ -129,59 +131,59 @@ class QCommandExecuter(QtWidgets.QWidget):
 
     def __check_arg(self, arg, data_type):
         if data_type == PT.CmdArgType.DevBoolean:
-            val = bool(arg)
+            val = arg.strip().lower() not in ('0', 'false', 'no', '')
 
         elif data_type == PT.CmdArgType.DevDouble:
             val = float(arg)
-            if arg < np.np.finfo(np.float64).min or arg > np.finfo(np.float64).max:
+            if val < np.finfo(np.float64).min or val > np.finfo(np.float64).max:
                 raise ValueError("Out of range")
             val = np.float64(val)
 
         elif data_type == PT.CmdArgType.DevFloat:
             val = float(arg)
-            if arg < np.finfo(np.float32).min or arg > np.finfo(np.float32).max:
+            if val < np.finfo(np.float32).min or val > np.finfo(np.float32).max:
                 raise ValueError("Out of range")
             val = np.float32(val)
 
         elif data_type == PT.CmdArgType.DevShort:
             val = int(arg)
-            if arg < np.iinfo(np.int16).min or arg > np.iinfo(np.int16).max:
+            if val < np.iinfo(np.int16).min or val > np.iinfo(np.int16).max:
                 raise ValueError("Out of range")
             val = np.int16(val)
 
-        elif data_type == PT.CmdArgType.DevInt or data_type == PT.CmdArgType.DevLong:
+        elif data_type == PT.CmdArgType.DevLong:
             val = int(arg)
-            if arg < np.iinfo(np.int32).min or arg > np.iinfo(np.int32).max:
+            if val < np.iinfo(np.int32).min or val > np.iinfo(np.int32).max:
                 raise ValueError("Out of range")
             val = np.int32(val)
 
         elif data_type == PT.CmdArgType.DevLong64:
             val = int(arg)
-            if arg < np.iinfo(np.int64).min or arg > np.iinfo(np.int64).max:
+            if val < np.iinfo(np.int64).min or val > np.iinfo(np.int64).max:
                 raise ValueError("Out of range")
             val = np.int64(val)
 
         elif data_type == PT.CmdArgType.DevUChar:
             val = int(arg)
-            if arg < np.iinfo(np.uint8).min or arg > np.iinfo(np.uint8).max:
+            if val < np.iinfo(np.uint8).min or val > np.iinfo(np.uint8).max:
                 raise ValueError("Out of range")
             val = np.uint8(val)
 
         elif data_type == PT.CmdArgType.DevUShort:
             val = int(arg)
-            if arg < np.iinfo(np.uint16).min or arg > np.iinfo(np.uint16).max:
+            if val < np.iinfo(np.uint16).min or val > np.iinfo(np.uint16).max:
                 raise ValueError("Out of range")
             val = np.uint16(val)
 
         elif data_type == PT.CmdArgType.DevULong:
             val = int(arg)
-            if arg < np.iinfo(np.uint32).min or arg > np.iinfo(np.uint32).max:
+            if val < np.iinfo(np.uint32).min or val > np.iinfo(np.uint32).max:
                 raise ValueError("Out of range")
             val = np.uint32(val)
 
         elif data_type == PT.CmdArgType.DevULong64:
             val = int(arg)
-            if arg < np.iinfo(np.uint64).min or arg > np.iinfo(np.uint64).max:
+            if val < np.iinfo(np.uint64).min or val > np.iinfo(np.uint64).max:
                 raise ValueError("Out of range")
             val = np.uint64(val)
 
@@ -190,9 +192,6 @@ class QCommandExecuter(QtWidgets.QWidget):
 
         elif data_type == PT.CmdArgType.DevString:
             val = str(arg)
-
-        elif data_type == PT.CmdArgType.DevPipeBlob:
-            raise NotImplementedError("DevPipeBlob argument not supported")
 
         elif data_type == PT.CmdArgType.DevEncoded:
             raise NotImplementedError("DevEncoded argument not supported")
@@ -207,46 +206,46 @@ class QCommandExecuter(QtWidgets.QWidget):
                 val.append(bool(v))
 
         elif data_type == PT.CmdArgType.DevVarCharArray:
-            pass
+            raise NotImplementedError("DevVarCharArray argument not supported")
 
         elif data_type == PT.CmdArgType.DevVarDoubleArray:
             lst = self.__check_array(arg)
             val = []
             for v in lst:
-                val.append(bool(v))
+                val.append(float(v))
 
         elif data_type == PT.CmdArgType.DevVarDoubleStringArray:
             raise NotImplementedError("DevVarDoubleStringArray argument not supported")
 
         elif data_type == PT.CmdArgType.DevVarFloatArray:
-            pass
+            raise NotImplementedError("DevVarFloatArray argument not supported")
 
         elif data_type == PT.CmdArgType.DevVarLong64Array:
-            pass
+            raise NotImplementedError("DevVarLong64Array argument not supported")
 
         elif data_type == PT.CmdArgType.DevVarLongArray:
-            pass
+            raise NotImplementedError("DevVarLongArray argument not supported")
 
         elif data_type == PT.CmdArgType.DevVarLongStringArray:
             raise NotImplementedError("DevVarLongStringArray argument not supported")
 
         elif data_type == PT.CmdArgType.DevVarShortArray:
-            pass
+            raise NotImplementedError("DevVarShortArray argument not supported")
 
         elif data_type == PT.CmdArgType.DevVarStateArray:
-            pass
+            raise NotImplementedError("DevVarStateArray argument not supported")
 
         elif data_type == PT.CmdArgType.DevVarStringArray:
-            pass
+            raise NotImplementedError("DevVarStringArray argument not supported")
 
         elif data_type == PT.CmdArgType.DevVarULong64Array:
-            pass
+            raise NotImplementedError("DevVarULong64Array argument not supported")
 
         elif data_type == PT.CmdArgType.DevVarULongArray:
-            pass
+            raise NotImplementedError("DevVarULongArray argument not supported")
 
         elif data_type == PT.CmdArgType.DevVarUShortArray:
-            pass
+            raise NotImplementedError("DevVarUShortArray argument not supported")
 
         elif data_type == PT.CmdArgType.DevVoid:
             val = None
@@ -258,4 +257,4 @@ class QCommandExecuter(QtWidgets.QWidget):
             arg = '[' + arg
         if arg[-1] != ']':
             arg = arg + ']'
-        return eval(arg)
+        return ast.literal_eval(arg)

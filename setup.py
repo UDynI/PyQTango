@@ -13,7 +13,7 @@ long_description = (here / 'README.md').read_text(encoding='utf-8')
 
 setup(
     name='PyQTango',
-    version='0.1.4',
+    version='0.1.6',
     description='A library of Qt5 Tango widgets',
 
     # Long description from README.md
