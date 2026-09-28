@@ -13,7 +13,7 @@ long_description = (here / 'README.md').read_text(encoding='utf-8')
 
 setup(
     name='PyQTango',
-    version='0.1.6',
+    version='0.1.7',
     description='A library of Qt5 Tango widgets',
 
     # Long description from README.md
@@ -57,7 +57,7 @@ setup(
     python_requires='>=3.6, <4',
 
     # Dependencies
-    install_requires=['pyqt5>=5.10', 'pytango>=9.2,<10'],
+    install_requires=['pyqt5>=5.10', 'pytango>=9.5'],
 
     # If there are data files included in your packages that need to be
     # installed, specify them here.

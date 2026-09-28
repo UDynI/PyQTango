@@ -205,6 +205,7 @@ class QAttribute(QtWidgets.QWidget):
                                 if m is not None:
                                     try:
                                         n = int(m.groups()[1])
+                                        self.w_value.setDecimals(n)
                                         while n > 1:
                                             step /= 10.0
                                             n -= 1
