@@ -5,9 +5,7 @@ Created on Tue May 12 11:13:29 2020
 @author: Michele Devetta <michele.devetta@cnr.it>
 """
 
-from PyQt5 import QtCore
-from PyQt5 import QtWidgets
-from PyQt5 import QtGui
+from .qt import QtCore, QtGui, QtWidgets, Slot, Property
 
 from .config import get_image_path
 
@@ -46,7 +44,6 @@ class QStatusLed(QtWidgets.QLabel):
         else:
             self.setPixmap(self.icon_off)
 
-    @QtCore.pyqtSlot(QtCore.QTimerEvent)
     def timerEvent(self, event):
         if self.__state == QStatusLed.Blinking:
             # Swap icon
@@ -65,7 +62,7 @@ class QStatusLed(QtWidgets.QLabel):
     def state(self):
         return self.__state
 
-    @QtCore.pyqtSlot(int)
+    @Slot(int)
     def setState(self, state):
         if state == QStatusLed.On:
             self.__state = QStatusLed.On
@@ -75,11 +72,10 @@ class QStatusLed(QtWidgets.QLabel):
             self.__state = QStatusLed.Error
         else:
             self.__state = QStatusLed.Off
-        self.update_state();
+        self.update_state()
 
-    state = QtCore.pyqtProperty("int", state, setState)
+    state = Property(int, state, setState)
 
-    @QtCore.pyqtSlot(QtGui.QResizeEvent)
     def resizeEvent(self, event):
         if event.size().isValid():
             sz = event.size()
@@ -88,8 +84,8 @@ class QStatusLed(QtWidgets.QLabel):
 
     def setupIcons(self, sz):
         gicon = QtGui.QPixmap(get_image_path("led-green.png"))
-        self.icon_green = gicon.scaled(sz.width(), sz.height(), QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation);
+        self.icon_green = gicon.scaled(sz.width(), sz.height(), QtCore.Qt.AspectRatioMode.KeepAspectRatio, QtCore.Qt.TransformationMode.SmoothTransformation)
         ricon = QtGui.QPixmap(get_image_path("led-red.png"))
-        self.icon_red = ricon.scaled(sz.width(), sz.height(), QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation);
+        self.icon_red = ricon.scaled(sz.width(), sz.height(), QtCore.Qt.AspectRatioMode.KeepAspectRatio, QtCore.Qt.TransformationMode.SmoothTransformation)
         oicon = QtGui.QPixmap(get_image_path("led-off.png"))
-        self.icon_off = oicon.scaled(sz.width(), sz.height(), QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation);
+        self.icon_off = oicon.scaled(sz.width(), sz.height(), QtCore.Qt.AspectRatioMode.KeepAspectRatio, QtCore.Qt.TransformationMode.SmoothTransformation)

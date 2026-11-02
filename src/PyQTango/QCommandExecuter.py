@@ -1,49 +1,60 @@
 # -*- coding: utf-8 -*-
 """
+QCommandExecuter: run any command of a device.
+
+Version 0.2 keeps the 0.1 API (``setDevice``, ``device``) and layout, but:
+
+* accepts every argument type through :mod:`PyQTango.core.argparser`
+  (Jive syntax: arrays, ``[1,2][a,b]``, ``"fmt",[bytes]``, states, enums...);
+* never blocks the GUI thread;
+* shows the full Tango error stack.
+
 Created on Tue May 12 11:13:29 2020
 
 @author: Michele Devetta <michele.devetta@cnr.it>
 """
 
-import time
-import numpy as np
-import ast
-from PyQt5 import QtCore
-from PyQt5 import QtWidgets
-from PyQt5 import QtGui
+import logging
+
+import tango as PT
+
+from .qt import QtGui, QtWidgets, Signal, Slot
 from .config import get_image_path
+from .core.argparser import parse_command_argin, argin_example, ArgParserError
+from .core.formatting import format_value
+from .models.registry import device_model
 
-import PyTango as PT
-
+log = logging.getLogger(__name__)
 
 
 class QCommandExecuter(QtWidgets.QWidget):
 
+    #: command, result, duration (ms)
+    executed = Signal(str, object, float)
+
     def __init__(self, parent=None):
-        # Parent constructor
         QtWidgets.QWidget.__init__(self, parent)
 
-        self.attr = None
-        self.evid = None
-
-        # Create layout
         self.selector = QtWidgets.QComboBox(self)
         self.selector.setObjectName("executor_selector")
         self.selector.currentIndexChanged.connect(self.on_index_changed)
         self.arg = QtWidgets.QLineEdit(self)
         self.arg.setObjectName("executor_arg")
         self.arg.setDisabled(True)
+        self.arg.returnPressed.connect(self.on_released)
         self.execute = QtWidgets.QPushButton(self)
         self.execute.setObjectName("executor_button")
         icon = QtGui.QIcon()
-        icon.addPixmap(QtGui.QPixmap(get_image_path("execute.png")), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        icon.addPixmap(QtGui.QPixmap(get_image_path("execute.png")), QtGui.QIcon.Mode.Normal, QtGui.QIcon.State.Off)
         self.execute.setIcon(icon)
         self.execute.setDisabled(True)
         self.execute.released.connect(self.on_released)
         self.desc = QtWidgets.QLabel(self)
         self.desc.setObjectName("executor_desc")
+        self.desc.setWordWrap(True)
         self.results = QtWidgets.QTextEdit(self)
         self.results.setObjectName("executor_results")
+        self.results.setReadOnly(True)
 
         hlayout = QtWidgets.QHBoxLayout()
         hlayout.addWidget(self.selector)
@@ -56,205 +67,99 @@ class QCommandExecuter(QtWidgets.QWidget):
         self.setLayout(vlayout)
 
         sz = self.execute.size()
-        self.execute.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
+        self.execute.setSizePolicy(QtWidgets.QSizePolicy.Policy.Fixed, QtWidgets.QSizePolicy.Policy.Fixed)
         self.execute.resize(sz.height(), sz.height())
 
         self.__dev = None
-        self.__cmd_info  = None
+        self.__cmds = []
+        self.__cmd_info = None
 
     def device(self):
-        if self.__dev is not None:
-            return self.__dev.name()
-        else:
-            return None
+        return self.__dev.name if self.__dev is not None else None
 
     def __cleanWidget(self):
         self.selector.blockSignals(True)
-        while self.selector.count() > 0:
-            self.selector.removeItem(0)
+        self.selector.clear()
         self.selector.blockSignals(False)
+        self.__cmds = []
+        self.__cmd_info = None
+        self.execute.setDisabled(True)
+        self.arg.setDisabled(True)
 
     def setDevice(self, device):
         self.__cleanWidget()
-        try:
-            self.__dev = PT.DeviceProxy(device)
-            self.__dev.ping()
-        except PT.DevFailed:
-            print("Device not available")
-            self.execute.setDisabled(True)
-            self.arg.setDisabled(True)
-            self.__dev = None
-            return
-
-        cmd_list = list(self.__dev.get_command_list())
-        cmd_list.sort()
-        self.selector.addItems(cmd_list)
-        self.execute.setDisabled(False)
-
-    @QtCore.pyqtSlot(int)
-    def on_index_changed(self, index):
-        if self.__dev:
-            self.__cmd_info = self.__dev.get_command_config(self.selector.currentText())
-            idesc = self.__cmd_info.in_type_desc if self.__cmd_info.in_type_desc != 'Uninitialised' else 'None'
-            itype = self.__cmd_info.in_type
-            odesc = self.__cmd_info.out_type_desc if self.__cmd_info.out_type_desc != 'Uninitialised' else 'None'
-            otype = self.__cmd_info.out_type
-            msg = "Input: {0} (type: {1!s})\nOutput: {2} (type: {3!s})".format(idesc, itype, odesc, otype)
-            self.desc.setText(msg)
-            if itype == PT.CmdArgType.DevVoid:
-                self.arg.setDisabled(True)
-            else:
-                self.arg.setDisabled(False)
-
-    @QtCore.pyqtSlot()
-    def on_released(self):
-        s = time.time()
-        try:
-            if self.__cmd_info.in_type != PT.CmdArgType.DevVoid:
+        if self.__dev is not None:
+            for sig, slot in self.__connections(self.__dev):
                 try:
-                    val = self.__check_arg(self.arg.text(),self.__cmd_info.in_type)
-                except ValueError as e:
-                    QtWidgets.QMessageBox.critical(self, "Bad argument", str(e))
-                    return
-                except NotImplementedError as e:
-                    QtWidgets.QMessageBox.critical(self, "Not implemented", str(e))
-                    return
-                rsp = self.__dev.command_inout(self.selector.currentText(), val)
-            else:
-                rsp = self.__dev.command_inout(self.selector.currentText())
-            t = int((time.time() - s) * 1000.0)
+                    sig.disconnect(slot)
+                except (TypeError, RuntimeError):
+                    pass
+        self.__dev = device_model(device) if device else None
+        if self.__dev is None:
+            return
+        for sig, slot in self.__connections(self.__dev):
+            sig.connect(slot)
+        self.__dev.load_commands()
 
-            rsp = "Command: {0}/{1}\nDuration: {2:d} msec\nResult: {3!s}".format(self.__dev.name(), self.selector.currentText(), t, rsp)
-        except PT.DevFailed as e:
-            rsp = str(e.args[0].desc)
-        self.results.setText(rsp)
+    def __connections(self, dev):
+        return [(dev.commandsChanged, self.__on_commands), (dev.errorChanged, self.__on_device_error)]
 
-    def __check_arg(self, arg, data_type):
-        if data_type == PT.CmdArgType.DevBoolean:
-            val = arg.strip().lower() not in ('0', 'false', 'no', '')
+    def __on_commands(self, cmds):
+        self.__cmds = list(cmds)
+        self.selector.blockSignals(True)
+        self.selector.clear()
+        self.selector.addItems([c.cmd_name for c in self.__cmds])
+        self.selector.blockSignals(False)
+        self.execute.setDisabled(not self.__cmds)
+        self.on_index_changed(self.selector.currentIndex())
 
-        elif data_type == PT.CmdArgType.DevDouble:
-            val = float(arg)
-            if val < np.finfo(np.float64).min or val > np.finfo(np.float64).max:
-                raise ValueError("Out of range")
-            val = np.float64(val)
+    def __on_device_error(self, err):
+        log.warning("Device not available: %s", err)
+        self.results.setPlainText(err.text())
+        self.execute.setDisabled(True)
+        self.arg.setDisabled(True)
 
-        elif data_type == PT.CmdArgType.DevFloat:
-            val = float(arg)
-            if val < np.finfo(np.float32).min or val > np.finfo(np.float32).max:
-                raise ValueError("Out of range")
-            val = np.float32(val)
+    @Slot(int)
+    def on_index_changed(self, index):
+        if index < 0 or index >= len(self.__cmds):
+            self.__cmd_info = None
+            return
+        info = self.__cmd_info = self.__cmds[index]
+        idesc = info.in_type_desc if info.in_type_desc != 'Uninitialised' else 'None'
+        odesc = info.out_type_desc if info.out_type_desc != 'Uninitialised' else 'None'
+        msg = "Input: {0} (type: {1!s})\nOutput: {2} (type: {3!s})".format(idesc, info.in_type, odesc, info.out_type)
+        self.desc.setText(msg)
+        void = info.in_type == PT.CmdArgType.DevVoid
+        self.arg.setDisabled(void)
+        self.arg.setPlaceholderText(argin_example(info.in_type))
 
-        elif data_type == PT.CmdArgType.DevShort:
-            val = int(arg)
-            if val < np.iinfo(np.int16).min or val > np.iinfo(np.int16).max:
-                raise ValueError("Out of range")
-            val = np.int16(val)
+    @Slot()
+    def on_released(self):
+        info = self.__cmd_info
+        if info is None or self.__dev is None or not self.execute.isEnabled():
+            return
+        argin = None
+        if info.in_type != PT.CmdArgType.DevVoid:
+            try:
+                argin = parse_command_argin(self.arg.text(), info.in_type)
+            except ArgParserError as e:
+                QtWidgets.QMessageBox.critical(self, "Bad argument", str(e))
+                return
+        self.execute.setDisabled(True)
+        cmd = info.cmd_name
+        # Use this call's own task, so other widgets running commands on the
+        # same device do not update this one
+        task = self.__dev.execute(cmd, argin)
+        task.done.connect(lambda res, c=cmd: self.__on_done(c, res[0], res[1]))
+        task.failed.connect(lambda err, c=cmd: self.__on_failed(c, err))
 
-        elif data_type == PT.CmdArgType.DevLong:
-            val = int(arg)
-            if val < np.iinfo(np.int32).min or val > np.iinfo(np.int32).max:
-                raise ValueError("Out of range")
-            val = np.int32(val)
+    def __on_done(self, cmd, result, duration_ms):
+        self.execute.setDisabled(False)
+        text = format_value(result) if result is not None else "Command OK"
+        self.results.setPlainText("Command: {0}/{1}\nDuration: {2:d} msec\nResult: {3}".format(
+            self.__dev.name, cmd, int(duration_ms), text))
+        self.executed.emit(cmd, result, duration_ms)
 
-        elif data_type == PT.CmdArgType.DevLong64:
-            val = int(arg)
-            if val < np.iinfo(np.int64).min or val > np.iinfo(np.int64).max:
-                raise ValueError("Out of range")
-            val = np.int64(val)
-
-        elif data_type == PT.CmdArgType.DevUChar:
-            val = int(arg)
-            if val < np.iinfo(np.uint8).min or val > np.iinfo(np.uint8).max:
-                raise ValueError("Out of range")
-            val = np.uint8(val)
-
-        elif data_type == PT.CmdArgType.DevUShort:
-            val = int(arg)
-            if val < np.iinfo(np.uint16).min or val > np.iinfo(np.uint16).max:
-                raise ValueError("Out of range")
-            val = np.uint16(val)
-
-        elif data_type == PT.CmdArgType.DevULong:
-            val = int(arg)
-            if val < np.iinfo(np.uint32).min or val > np.iinfo(np.uint32).max:
-                raise ValueError("Out of range")
-            val = np.uint32(val)
-
-        elif data_type == PT.CmdArgType.DevULong64:
-            val = int(arg)
-            if val < np.iinfo(np.uint64).min or val > np.iinfo(np.uint64).max:
-                raise ValueError("Out of range")
-            val = np.uint64(val)
-
-        elif data_type == PT.CmdArgType.DevState:
-            raise NotImplementedError("DevState argument not supported")
-
-        elif data_type == PT.CmdArgType.DevString:
-            val = str(arg)
-
-        elif data_type == PT.CmdArgType.DevEncoded:
-            raise NotImplementedError("DevEncoded argument not supported")
-
-        elif data_type == PT.CmdArgType.DevEnum:
-            raise NotImplementedError("DevEnum argument not supported")
-
-        elif data_type == PT.CmdArgType.DevVarBooleanArray:
-            lst = self.__check_array(arg)
-            val = []
-            for v in lst:
-                val.append(bool(v))
-
-        elif data_type == PT.CmdArgType.DevVarCharArray:
-            raise NotImplementedError("DevVarCharArray argument not supported")
-
-        elif data_type == PT.CmdArgType.DevVarDoubleArray:
-            lst = self.__check_array(arg)
-            val = []
-            for v in lst:
-                val.append(float(v))
-
-        elif data_type == PT.CmdArgType.DevVarDoubleStringArray:
-            raise NotImplementedError("DevVarDoubleStringArray argument not supported")
-
-        elif data_type == PT.CmdArgType.DevVarFloatArray:
-            raise NotImplementedError("DevVarFloatArray argument not supported")
-
-        elif data_type == PT.CmdArgType.DevVarLong64Array:
-            raise NotImplementedError("DevVarLong64Array argument not supported")
-
-        elif data_type == PT.CmdArgType.DevVarLongArray:
-            raise NotImplementedError("DevVarLongArray argument not supported")
-
-        elif data_type == PT.CmdArgType.DevVarLongStringArray:
-            raise NotImplementedError("DevVarLongStringArray argument not supported")
-
-        elif data_type == PT.CmdArgType.DevVarShortArray:
-            raise NotImplementedError("DevVarShortArray argument not supported")
-
-        elif data_type == PT.CmdArgType.DevVarStateArray:
-            raise NotImplementedError("DevVarStateArray argument not supported")
-
-        elif data_type == PT.CmdArgType.DevVarStringArray:
-            raise NotImplementedError("DevVarStringArray argument not supported")
-
-        elif data_type == PT.CmdArgType.DevVarULong64Array:
-            raise NotImplementedError("DevVarULong64Array argument not supported")
-
-        elif data_type == PT.CmdArgType.DevVarULongArray:
-            raise NotImplementedError("DevVarULongArray argument not supported")
-
-        elif data_type == PT.CmdArgType.DevVarUShortArray:
-            raise NotImplementedError("DevVarUShortArray argument not supported")
-
-        elif data_type == PT.CmdArgType.DevVoid:
-            val = None
-
-        return val
-
-    def __check_array(self, arg):
-        if arg[0] != '[':
-            arg = '[' + arg
-        if arg[-1] != ']':
-            arg = arg + ']'
-        return ast.literal_eval(arg)
+    def __on_failed(self, cmd, err):
+        self.execute.setDisabled(False)
+        self.results.setPlainText(err.text())

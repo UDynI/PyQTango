@@ -13,8 +13,8 @@ long_description = (here / 'README.md').read_text(encoding='utf-8')
 
 setup(
     name='PyQTango',
-    version='0.1.7',
-    description='A library of Qt5 Tango widgets',
+    version='0.2.0',
+    description='A library of event-aware Tango widgets for PyQt5 and PyQt6',
 
     # Long description from README.md
     long_description=long_description,
@@ -38,13 +38,15 @@ setup(
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3 :: Only',
         'Environment :: X11 Applications :: Qt',
+        'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.13',
 
         # Operating system
         'Operating System :: OS Independent',
     ],
 
     # Keywords
-    keywords='tango, pytango, qt5, widgets',
+    keywords='tango, pytango, qt5, qt6, pyqt5, pyqt6, widgets',
 
     # When your source code is in a subdirectory under the project root, e.g.
     # `src/`, it is necessary to specify the `package_dir` argument.
@@ -54,10 +56,15 @@ setup(
     packages=find_packages(where='src'),
 
     # Python version
-    python_requires='>=3.6, <4',
+    python_requires='>=3.7, <4',
 
-    # Dependencies
-    install_requires=['pyqt5>=5.10', 'pytango>=9.5'],
+    # Dependencies: PyQt5 is the default binding (lab GUIs); PyQt6 is also supported
+    # through PyQTango.qt (select it with PYQTANGO_QT_API=pyqt6 or by importing it first).
+    install_requires=['pyqt5>=5.15', 'pytango>=9.5', 'numpy'],
+    extras_require={
+        'pyqt6': ['pyqt6>=6.4'],
+        'test': ['pytest', 'pytest-qt'],
+    },
 
     # If there are data files included in your packages that need to be
     # installed, specify them here.

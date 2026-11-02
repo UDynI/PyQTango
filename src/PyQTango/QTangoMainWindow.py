@@ -8,17 +8,16 @@ Created on Wed Mar 16 2022
 @author: Michele Devetta <michele.devetta@cnr.it>
 """
 
+from .qt import QtGui, QtWidgets, no_window_flags
+
 import inspect
 import os.path as osp
-from PyQt5 import QtCore
-from PyQt5 import QtWidgets
-from PyQt5 import QtGui
 from .TangoWindows import TangoEvents2Qt, WindowScaling
 
 
 class QTangoMainWindow(TangoEvents2Qt, WindowScaling, QtWidgets.QMainWindow):
     """
-    QTangoMainWindow(parent=None, flags=QtCore.Qt.WindowFlags())
+    QTangoMainWindow(parent=None, flags=no_window_flags())
 
     Extension of QMainWindow to create Tango enabled GUIs. The class puts in
     place all that is needed to handle Tango events in Qt GUIs. Connect all
@@ -42,7 +41,7 @@ class QTangoMainWindow(TangoEvents2Qt, WindowScaling, QtWidgets.QMainWindow):
 
     """
 
-    def __init__(self, parent=None, flags=QtCore.Qt.WindowFlags()):
+    def __init__(self, parent=None, flags=no_window_flags()):
         """ Constructor
         """
         # Call parent constructor
@@ -54,7 +53,7 @@ class QTangoMainWindow(TangoEvents2Qt, WindowScaling, QtWidgets.QMainWindow):
         """ Set window icon
         """
         icon = QtGui.QIcon()
-        icon.addPixmap(pixmap, QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        icon.addPixmap(pixmap, QtGui.QIcon.Mode.Normal, QtGui.QIcon.State.Off)
         ui.setWindowIcon(icon)
 
     def getImage(self, image):
@@ -75,7 +74,7 @@ class QTangoDialog(TangoEvents2Qt, WindowScaling, QtWidgets.QDialog):
     """ Same as QTangoMainWindow but for QDialogs
     """
 
-    def __init__(self, parent=None, f=QtCore.Qt.WindowFlags()):
+    def __init__(self, parent=None, f=no_window_flags()):
         """ Constructor
         """
         # Call parent constructor

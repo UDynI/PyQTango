@@ -3,7 +3,7 @@
 @author: Michele Devetta <michele.devetta@cnr.it>
 """
 
-import PyTango as PT
+import tango as PT
 
 class TreeItem(object):
     def __init__(self, name, parent=None):

@@ -8,9 +8,9 @@ Created on Wed Mar 16 2022
 @author: Michele Devetta <michele.devetta@cnr.it>
 """
 
-from PyQt5 import QtCore
-from PyQt5 import QtWidgets
-import PyTango as PT
+from .qt import QtCore, QtWidgets, Qt, Signal, Slot, is_qt6
+
+import tango as PT
 
 
 class TangoEvents2Qt(object):
@@ -18,7 +18,7 @@ class TangoEvents2Qt(object):
     """
 
     # Tango event signal
-    tangoEvent = QtCore.pyqtSignal(PT.EventData)
+    tangoEvent = Signal(PT.EventData)
 
     def __init__(self):
         # Connect event signal
@@ -29,7 +29,7 @@ class TangoEvents2Qt(object):
         """
         self.tangoEvent.emit(event)
 
-    @QtCore.pyqtSlot(PT.EventData)
+    @Slot(PT.EventData)
     def __eventHandler(self, event):
         """ Event handling slot
         """
@@ -47,6 +47,13 @@ class WindowScaling(object):
     def __init__(self):
         # Get app
         app = QtWidgets.QApplication.instance()
+
+        # Qt6 (always) and Qt5 with AA_EnableHighDpiScaling (see
+        # PyQTango.qt.make_application) already scale the UI: scaling it again
+        # here would double it.
+        if is_qt6() or app.testAttribute(Qt.ApplicationAttribute.AA_EnableHighDpiScaling):
+            self.scaling = 1.0
+            return
 
         # Get scaling factor for HiDPI
         design_dpi = 95

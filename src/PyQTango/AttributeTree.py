@@ -3,14 +3,17 @@
 @author: Michele Devetta <michele.devetta@cnr.it>
 """
 
-from PyQt5 import QtCore
-from PyQt5 import QtGui
-from PyQt5 import QtWidgets
+import logging
+
+from .qt import QtCore, QtGui, QtWidgets
+
 from .CommonTree import TreeItem, DeviceItem, AttributeItem
-import PyTango as PT
+import tango as PT
 from .DeviceTree import DeviceTreeModel
 from .TangoUtil import getAllLiveAttributes
 from .config import get_image_path
+
+log = logging.getLogger(__name__)
 
 
 class AttributeTreeModel(DeviceTreeModel):
@@ -30,7 +33,7 @@ class AttributeTreeModel(DeviceTreeModel):
                     if dev in attr_dict[sys][sub]:
                         if attr in attr_dict[sys][sub][dev]:
                             # Duplicate attribute
-                            print("Skipping duplicate attribute {0}".format(d['attribute']))
+                            log.warning("Skipping duplicate attribute %s", d['attribute'])
                         else:
                             attr_dict[sys][sub][dev][attr] = d
                     else:
@@ -86,17 +89,18 @@ class AttributeTreeModel(DeviceTreeModel):
         if not index.isValid():
             return None
 
-        if role == QtCore.Qt.DecorationRole:
+        if role == QtCore.Qt.ItemDataRole.DecorationRole:
             item = index.internalPointer()
             if type(item) == AttributeItem:
                 if item.getDataFormat() == PT.AttrDataFormat.SCALAR:
-                    return QtGui.QIcon(QtGui.QPixmap(get_image_path("scalar.svg")));
+                    return QtGui.QIcon(QtGui.QPixmap(get_image_path("scalar.svg")))
                 elif item.getDataFormat() == PT.AttrDataFormat.SPECTRUM:
-                    return QtGui.QIcon(QtGui.QPixmap(get_image_path("spectrum.png")));
-                elif item.getDataFormat() == PT.AttrDataFormat.SPECTRUM:
-                    return QtGui.QIcon(QtGui.QPixmap(get_image_path("image.png")));
-                elif item.getDataFormat() == PT.AttrDataFormat.FMT_UNKNOWN:
-                    return QtGui.QIcon(QtGui.QPixmap(get_image_path("genattr.png")));
+                    return QtGui.QIcon(QtGui.QPixmap(get_image_path("spectrum.png")))
+                elif item.getDataFormat() == PT.AttrDataFormat.IMAGE:
+                    return QtGui.QIcon(QtGui.QPixmap(get_image_path("image.png")))
+                else:
+                    # Unknown format (device not reachable): generic attribute icon
+                    return QtGui.QIcon(QtGui.QPixmap(get_image_path("scalar.svg")))
 
         return super().data(index, role)
 
@@ -182,7 +186,7 @@ class QArchivedAttributeTree(QBaseAttributeTree):
             progress.setLabelText("Scanning attributes for configuration...")
             progress.setMinimum(0)
             progress.setMaximum(len(attrs))
-            progress.setWindowModality(QtCore.Qt.WindowModal)
+            progress.setWindowModality(QtCore.Qt.WindowModality.WindowModal)
             progress.setAutoClose(True)
             progress.setValue(0)
             progress.show()
@@ -195,16 +199,16 @@ class QArchivedAttributeTree(QBaseAttributeTree):
 
             try:
                 if parent is not None and progress.wasCanceled():
-                    print("[D] Attribute scanning canceled")
-                    raise PT.DevFailed()
+                    log.debug("Attribute scanning canceled")
+                    break
                 ap = PT.AttributeProxy(a)
                 conf = ap.get_config()
                 attr_list.append({'attribute': a, 'data_format': conf.data_format, 'data_type': conf.data_type})
-                print("[D] configured attribute {0:s}".format(a))
+                log.debug("configured attribute %s", a)
             except PT.DevFailed:
                 attr_list.append({'attribute': a})
 
-        print("[D] Attribute scanning done")
+        log.debug("Attribute scanning done")
         if parent is not None:
             progress.close()
 

@@ -3,13 +3,16 @@
 @author: Michele Devetta <michele.devetta@cnr.it>
 """
 
-from PyQt5 import QtCore
-from PyQt5 import QtGui
-from PyQt5 import QtWidgets
+import logging
+
+from .qt import QtCore, QtGui, QtWidgets
+
 from .CommonTree import TreeItem, DeviceItem, ServerItem
-import PyTango as PT
+import tango as PT
 from .TangoUtil import getAllRegisteredDevices
 from .config import get_image_path
+
+log = logging.getLogger(__name__)
 
 
 class BaseDeviceTreeModel(QtCore.QAbstractItemModel):
@@ -32,11 +35,11 @@ class BaseDeviceTreeModel(QtCore.QAbstractItemModel):
         if not index.isValid():
             return None
 
-        if role == QtCore.Qt.DecorationRole:
+        if role == QtCore.Qt.ItemDataRole.DecorationRole:
             if type(index.internalPointer()) == DeviceItem:
-                return QtGui.QIcon(QtGui.QPixmap(get_image_path("gear.png")));
+                return QtGui.QIcon(QtGui.QPixmap(get_image_path("gear.png")))
 
-        elif role == QtCore.Qt.DisplayRole:
+        elif role == QtCore.Qt.ItemDataRole.DisplayRole:
             item = index.internalPointer()
             return item.getName()
 
@@ -44,13 +47,13 @@ class BaseDeviceTreeModel(QtCore.QAbstractItemModel):
 
     def flags(self, index):
         if not index.isValid():
-            return QtCore.Qt.NoItemFlags
+            return QtCore.Qt.ItemFlag.NoItemFlags
         if type(index.internalPointer()) == TreeItem:
-            return QtCore.Qt.ItemIsEnabled
-        return QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsSelectable
+            return QtCore.Qt.ItemFlag.ItemIsEnabled
+        return QtCore.Qt.ItemFlag.ItemIsEnabled | QtCore.Qt.ItemFlag.ItemIsSelectable
 
     def headerData(self, section, orientation, role):
-        if orientation == QtCore.Qt.Horizontal and role == QtCore.Qt.DisplayRole:
+        if orientation == QtCore.Qt.Orientation.Horizontal and role == QtCore.Qt.ItemDataRole.DisplayRole:
             return self.rootItem.getName()
         return None
 
@@ -105,7 +108,7 @@ class DeviceTreeModel(BaseDeviceTreeModel):
                 if sub in dev_dict[sys]:
                     if dev in dev_dict[sys][sub]:
                         # Duplicate device
-                        print("Skipping duplicate device {0}".format(d['device']))
+                        log.warning("Skipping duplicate device %s", d['device'])
                     else:
                         dev_dict[sys][sub][dev] = d
                 else:
@@ -159,7 +162,7 @@ class DeviceByServerTreeModel(BaseDeviceTreeModel):
                     if cls in srv_dict[srv][inst]:
                         if dev in srv_dict[srv][inst][cls]:
                             # Duplicate device
-                            print("Skipping duplicate device {0}".format(dev))
+                            log.warning("Skipping duplicate device %s", dev)
                         else:
                             srv_dict[srv][inst][cls][dev] = d
                     else:
@@ -223,9 +226,9 @@ class DeviceByClassTreeModel(BaseDeviceTreeModel):
             dev = d['device']
 
             if cls in cls_dict:
-                if dev in cls_dict:
+                if dev in cls_dict[cls]:
                     # Duplicate device
-                    print("Skipping duplicate device {0}".format(dev))
+                    log.warning("Skipping duplicate device %s", dev)
                 else:
                     cls_dict[cls][dev] = d
             else:
@@ -267,16 +270,11 @@ class QDeviceTree(QtWidgets.QTreeView):
         if resize and parent is not None:
             self.resize(parent.size())
 
-        # Connect to Tango database
-        if dbhost is None:
-            self.db = PT.Database()
-
-        else:
-            self.db = PT.Database(dbhost, port)
-
-        # Get device list
+        # Connect to Tango database (only needed when no device list is given)
+        self.db = None
         if dev_list is None:
-            dev_list = getAllRegisteredDevices()
+            self.db = PT.Database(dbhost, port) if dbhost is not None else PT.Database()
+            dev_list = getAllRegisteredDevices(dbhost, port)
 
         # Model
         if structure == self.ByServer:

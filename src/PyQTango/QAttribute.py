@@ -1,292 +1,227 @@
 # -*- coding: utf-8 -*-
 """
+QAttribute: one-line read/write widget for a scalar attribute.
+
+Version 0.2 keeps the 0.1 API (``setTangoAttribute``, ``tangoAttribute``,
+``label``, ``updated``, ``shutdown``) and look, but is built on the shared,
+event-aware :class:`PyQTango.models.TangoAttributeModel`:
+
+* works whether or not the server pushes change events (polling fallback);
+* supports READ, READ_WRITE, READ_WITH_WRITE and WRITE attributes;
+* shows spectrum and image attributes as read-only text;
+* never blocks the GUI thread (configuration, reads and writes are asynchronous).
+
 Created on Tue May 12 11:13:29 2020
 
 @author: Michele Devetta <michele.devetta@cnr.it>
 """
 
-import re
-from PyQt5 import QtCore
-from PyQt5 import QtWidgets
-from PyQt5 import QtGui
+import logging
 
+import tango as PT
+
+from .qt import QtCore, QtGui, QtWidgets, Signal, Slot, Property
 from .config import get_image_path
+from .core.formatting import format_scalar, format_value, is_float_type, is_int_type, is_numeric_type
+from .widgets.base import TangoAttributeWidget
+from .widgets.colors import state_style
 
-import PyTango as PT
+log = logging.getLogger(__name__)
+
+_WRITABLE = (PT.AttrWriteType.READ_WRITE, PT.AttrWriteType.READ_WITH_WRITE, PT.AttrWriteType.WRITE)
 
 
-class QAttribute(QtWidgets.QWidget):
+def _limit(text, data_type):
+    """ Numeric min/max from an AttributeInfoEx string, or None """
+    if text in (None, "", "Not specified"):
+        return None
+    try:
+        return int(text) if is_int_type(data_type) else float(text)
+    except ValueError:
+        return None
 
-    # Internal Tango change event signal
-    __tango_event = QtCore.pyqtSignal(PT.EventData)
 
-    # On Update signal
-    updated = QtCore.pyqtSignal(PT.DeviceAttribute)
+class QAttribute(TangoAttributeWidget, QtWidgets.QWidget):
 
-    # Dev-state style
-    __devstate_style_common = "border-radius:3px;border: 1px solid black;"
-    __devstate_style = {PT.DevState.ALARM: "background-color: rgb(255, 140, 0);color: rgb(0, 0, 0);",        # Black on orange
-                        PT.DevState.CLOSE: "background-color: rgb(255, 255, 255);color: rgb(0, 0, 0);",      # Black on white
-                        PT.DevState.DISABLE: "background-color: rgb(255, 0, 255);color: rgb(0, 0, 0);",      # Black on magenta
-                        PT.DevState.EXTRACT: "background-color: rgb(0, 255, 0);color: rgb(0, 0, 0);",        # Black on green
-                        PT.DevState.FAULT: "background-color: rgb(255, 0, 0);color: rgb(0, 0, 0);",          # White on red
-                        PT.DevState.INIT: "background-color: rgb(204, 204, 122);color: rgb(0, 0, 0);",       # Black on beige
-                        PT.DevState.INSERT: "background-color: rgb(255, 255, 255);color: rgb(0, 0, 0);",     # Black on white
-                        PT.DevState.MOVING: "background-color: rgb(128, 160, 255);color: rgb(0, 0, 0);",     # While on light blue
-                        PT.DevState.OFF: "background-color: rgb(255, 255, 255);color: rgb(0, 0, 0);",        # Black on white
-                        PT.DevState.ON: "background-color: rgb(0, 255, 0);color: rgb(0, 0, 0);",             # Black on green
-                        PT.DevState.OPEN: "background-color: rgb(0, 255, 0);color: rgb(0, 0, 0);",           # Black on green
-                        PT.DevState.RUNNING: "background-color: rgb(0, 125, 0);color: rgb(255, 255, 255);",  # White on dark green
-                        PT.DevState.STANDBY: "background-color: rgb(255, 255, 0);color: rgb(0, 0, 0);",      # Black on yellow
-                        PT.DevState.UNKNOWN: "background-color: rgb(155, 155, 155);color: rgb(0, 0, 0);"}    # Black on grey
-
+    # On Update signal (raw tango.DeviceAttribute, as in 0.1)
+    updated = Signal(PT.DeviceAttribute)
 
     def __init__(self, parent=None):
-        # Parent constructor
         QtWidgets.QWidget.__init__(self, parent)
+        TangoAttributeWidget.__init__(self)
 
-        self.attr = None
-        self.evid = None
-
-        # Connect event to slot
-        self.__tango_event.connect(self.event_handler)
-
-        # Create layout
         self.layout = QtWidgets.QHBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.w_value = None
         self.w_value_c = False
         self.c_button = None
         self.r_button = None
-        self.__unit = None
-        self.__enum_labels = None
         self.__cfg = None
-        self.__sig_connected = False
+        self.__shape = None
 
-    def __del__(self):
-        # Destructor to unsubcribe from Tango events
-        if self.attr is not None:
-            self.__unsubscribe()
-
+    # -- 0.1 API -----------------------------------------------------------------
     def shutdown(self):
-        if self.attr is not None and self.evid is not None:
-            self.attr.unsubscribe_event(self.evid)
-
-    def __unsubscribe(self):
-        try:
-            if self.evid is not None:
-                self.attr.unsubscribe_event(self.evid)
-            self.evid = None
-        except Exception as e:
-            print("Error unsubscribing!", e)
+        """ Detach from the attribute (kept for compatibility) """
+        self.setModel(None)
 
     def label(self):
-        if self.__cfg is not None:
-            return self.__cfg.label
-        else:
-            return ""
+        return self.__cfg.label if self.__cfg is not None else ""
 
     def tangoAttribute(self):
-        if self.attr is not None:
-            return self.attr.name()
-        else:
-            return None
+        return self.model().name if self.model() is not None else None
 
     def setTangoAttribute(self, attr_name):
-        if self.attr is not None:
-            self.__unsubscribe()
-            self.attr = None
-
-        if attr_name == "":
-            # Clearing widget
-            self.__cleanWidget()
+        if not attr_name:
+            self.setModel(None)
         else:
-            print("[D] Setting up attribute", attr_name)
-            try:
-                self.attr = PT.AttributeProxy(attr_name)
-                self.attr.ping()
-                self.setupWidget()
-                self.evid = self.attr.subscribe_event(PT.EventType.CHANGE_EVENT, self.event_callback)
-            except PT.DevFailed as e:
-                # TODO error
-                print("[E] Failed to setup attribute '{0}'. Error: {1!s}".format(attr_name, e.args[0].desc))
+            log.debug("Setting up attribute %s", attr_name)
+            self.setModel(attr_name)
 
+    modelName = Property(str, TangoAttributeWidget.getModelName, TangoAttributeWidget.setModelName,
+                         TangoAttributeWidget.resetModel)
+
+    def event_callback(self, event):
+        """ Kept for compatibility: events now arrive through the shared model """
+
+    # -- Model hooks ---------------------------------------------------------------
+    def on_model_cleared(self):
+        self.__cleanWidget()
+        self.__cfg = None
+        self.__shape = None
+
+    def on_config(self, cfg):
+        self.__cfg = cfg
+        shape = (cfg.data_format, cfg.data_type, cfg.writable)
+        if shape != self.__shape:
+            self.__shape = shape
+            self.setupWidget()
+        else:
+            self.__apply_limits()
+        self.setToolTip(self.tooltip_text())
+
+    def on_error(self, err):
+        self.setToolTip(self.tooltip_text())
+        if err is not None and self.w_value is not None and not self.w_value_c:
+            self.w_value.setStyleSheet("color: gray;")
+
+    def on_value(self, value):
+        if self.__cfg is None or self.w_value is None:
+            return
+        cfg = self.__cfg
+        if cfg.data_format != PT.AttrDataFormat.SCALAR:
+            self.w_value.setText(format_value(value.value, cfg.format, cfg.data_type, cfg.enum_labels,
+                                              cfg.unit, max_items=20))
+            if value.raw is not None:
+                self.updated.emit(value.raw)
+            return
+
+        if cfg.writable in _WRITABLE and self.w_value_c:
+            # The user is editing: do not overwrite, flag the change
+            self.w_value.setStyleSheet("color: red;")
+            return
+
+        shown = value.value
+        if cfg.writable == PT.AttrWriteType.WRITE:
+            shown = value.w_value if value.w_value is not None else value.value
+
+        w = self.w_value
+        w.blockSignals(True)
+        try:
+            if isinstance(w, QtWidgets.QLineEdit):
+                w.setText(self.__format_value(shown))
+                w.setStyleSheet("")
+            elif isinstance(w, (QtWidgets.QSpinBox, QtWidgets.QDoubleSpinBox)):
+                w.setValue(shown)
+                w.setStyleSheet("")
+            elif isinstance(w, QtWidgets.QCheckBox):
+                w.setChecked(bool(shown))
+            elif isinstance(w, QtWidgets.QComboBox):
+                w.setCurrentIndex(int(shown))
+            elif isinstance(w, QtWidgets.QLabel) and cfg.data_type == PT.CmdArgType.DevState:
+                w.setText(str(shown))
+                w.setStyleSheet(state_style(shown))
+        finally:
+            w.blockSignals(False)
+        if value.raw is not None:
+            self.updated.emit(value.raw)
+
+    def on_write_done(self, err):
+        if err is None:
+            return
+        QtWidgets.QMessageBox.critical(self, "Failed to set attribute", err.message)
+
+    # -- Widget construction ---------------------------------------------------------
     def __cleanWidget(self):
-        # Clean layout
-        if self.w_value is not None:
-            if self.__sig_connected:
-                try:
-                    if isinstance(self.w_value, QtWidgets.QLineEdit):
-                        self.w_value.textChanged.disconnect()
-                    elif isinstance(self.w_value, QtWidgets.QCheckBox):
-                        self.w_value.stateChanged.disconnect()
-                    elif isinstance(self.w_value, QtWidgets.QSpinBox) or isinstance(self.w_value, QtWidgets.QDoubleSpinBox):
-                        self.w_value.valueChanged.disconnect()
-                    elif isinstance(self.w_value, QtWidgets.QComboBox):
-                        self.w_value.currentIndexChanged.disconnect()
-                except TypeError as e:
-                    # Ignore errors while disconnecting signals
-                    print("[W] Disconnect failed. Error:", e)
-            self.__sig_connected = False
-            self.layout.removeWidget(self.w_value)
-            self.w_value = None
-            self.w_value_c = False
-        if self.c_button is not None:
-            self.c_button.released.disconnect()
-            self.layout.removeWidget(self.c_button)
-            self.c_button = None
-        if self.r_button is not None:
-            self.r_button.released.disconnect()
-            self.layout.removeWidget(self.r_button)
-            self.r_button = None
-        self.__unit = None
-        self.__enum_labels = None
+        for w in (self.w_value, self.c_button, self.r_button):
+            if w is not None:
+                self.layout.removeWidget(w)
+                w.deleteLater()
+        self.w_value = None
+        self.w_value_c = False
+        self.c_button = None
+        self.r_button = None
 
     def setupWidget(self):
-        # Clear widget
         self.__cleanWidget()
+        cfg = self.__cfg
+        if cfg is None:
+            return
+        dtype = cfg.data_type
 
-        # Read attribute config
-        self.__cfg = self.attr.get_config()
+        if cfg.data_format != PT.AttrDataFormat.SCALAR:
+            # Spectrum / image: read-only text summary
+            self.w_value = QtWidgets.QLineEdit(self)
+            self.w_value.setReadOnly(True)
 
-        if self.__cfg.data_format == PT.AttrDataFormat.SCALAR:
-
-            if self.__cfg.writable == PT.AttrWriteType.READ:
-                # Read only. We just add a read-only QLineEdit, QCheckbox or QLabel
-                if self.__isNumeric(self.__cfg.data_type) or self.__cfg.data_type == PT.CmdArgType.DevString:
-                    # QLineEdit
-                    self.w_value = QtWidgets.QLineEdit(self)
-                    self.w_value.setReadOnly(True)
-                    self.w_value.setObjectName(self.__cfg.name)
-
-                elif self.__cfg.data_type == PT.CmdArgType.DevBoolean:
-                    # Put checkbox
-                    self.w_value = QtWidgets.QCheckBox(self)
-                    self.w_value.setText("")
-                    self.w_value.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
-                    self.w_value.setFocusPolicy(QtCore.Qt.NoFocus);
-
-                elif self.__cfg.data_type == PT.CmdArgType.DevState:
-                    # QLabelsizeHint
-                    self.w_value = QtWidgets.QLabel(self)
-                    self.w_value.setText(str(PT.DevState.UNKNOWN))
-                    self.w_value.setStyleSheet(self.__devstate_style_common+self.__devstate_style[PT.DevState.UNKNOWN])
-                    self.w_value.setObjectName(self.__cfg.name)
-
-                elif self.__cfg.data_type == PT.CmdArgType.DevEnum:
-                    # QLineEdit
-                    self.__enum_labels = self.__cfg.enum_labels
-                    self.w_value = QtWidgets.QLineEdit(self)
-                    self.w_value.setReadOnly(True)
-                    self.w_value.setObjectName(self.__cfg.name)
-
-                else:
-                    raise NotImplementedError("Unexpected data type '{0!s}'".format(self.__cfg.data_type))
-
-                # Common widget config
-                self.w_value.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
-                self.w_value.setObjectName(self.__cfg.name)
-
-            elif self.__cfg.writable == PT.AttrWriteType.READ_WRITE:
-                # Read-write. If a numeric type and min and max are specified we
-                # can use a QSpinbox. Otherwise a QLineEdit of a checkbox for bool
-                # For QSpinBox and QLineEdit we also add confirm and reject pushbuttons
-                minimum = self.__check_value(self.__cfg.min_value, self.__cfg.data_type)
-                maximum = self.__check_value(self.__cfg.max_value, self.__cfg.data_type)
-
-                if self.__isNumeric(self.__cfg.data_type):
-                    if minimum is not None and maximum is not None:
-                        # QSpinbox
-                        if self.__cfg.data_type == PT.CmdArgType.DevDouble or self.__cfg.data_type == PT.CmdArgType.DevFloat:
-                            self.w_value = QtWidgets.QDoubleSpinBox(self)
-                            step = 0.1
-                            if self.__cfg.format != "":
-                                m = re.match("%(\d*)\.(\d+)[ef]+", self.__cfg.format)
-                                if m is not None:
-                                    try:
-                                        n = int(m.groups()[1])
-                                        self.w_value.setDecimals(n)
-                                        while n > 1:
-                                            step /= 10.0
-                                            n -= 1
-                                    except ValueError:
-                                        pass
-                            self.w_value.setSingleStep(step)
-                        else:
-                            self.w_value = QtWidgets.QSpinBox(self)
-                            self.w_value.setSingleStep(1)
-                        self.w_value.setRange(minimum, maximum)
-                        if self.__cfg.unit != "":
-                            self.w_value.setSuffix(self.__cfg.unit)
-                    else:
-                        # QLineEdit
-                        self.w_value = QtWidgets.QLineEdit(self)
-                        self.__unit = self.__cfg.unit
-                    self.c_button = self.__create_pushbutton(self.__cfg.name, self, 'c', self.size().height())
-                    self.r_button = self.__create_pushbutton(self.__cfg.name, self, 'r', self.size().height())
-
-                elif self.__cfg.data_type == PT.CmdArgType.DevBoolean:
-                    # Put checkbox
-                    self.w_value = QtWidgets.QCheckBox(self)
-                    self.w_value.setText("")
-
-                elif self.__cfg.data_type == PT.CmdArgType.DevState:
-                    # Doesn't make much sense...
-                    raise NotImplementedError("Writable DevState is not supported")
-
-                elif self.__cfg.data_type == PT.CmdArgType.DevEnum:
-                    # QComboBox
-                    self.w_value = QtWidgets.QComboBox(self)
-                    self.w_value.addItems(self.__cfg.enum_labels)
-                    self.c_button = self.__create_pushbutton(self.__cfg.name, self, 'c', self.size().height())
-                    self.r_button = self.__create_pushbutton(self.__cfg.name, self, 'r', self.size().height())
-
-                elif self.__cfg.data_type == PT.CmdArgType.DevString:
-                    # QLineEdit
-                    self.w_value = QtWidgets.QLineEdit(self)
-                    self.c_button = self.__create_pushbutton(self.__cfg.name, self, 'c', self.size().height())
-                    self.r_button = self.__create_pushbutton(self.__cfg.name, self, 'r', self.size().height())
-
-                else:
-                    raise NotImplementedError("Unexpected data type '{0!s}'".format(self.__cfg.data_type))
-
-                # Common widget config
-                self.w_value.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
-                self.w_value.setObjectName(self.__cfg.name)
-
-                # Connect signals
-                if isinstance(self.w_value, QtWidgets.QLineEdit):
-                    self.w_value.textChanged.connect(self.on_textChanged)
-                    self.__sig_connected = True
-                elif isinstance(self.w_value, QtWidgets.QCheckBox):
-                    self.w_value.stateChanged.connect(self.on_stateChanged)
-                    self.__sig_connected = True
-                elif isinstance(self.w_value, QtWidgets.QSpinBox):
-                    self.w_value.valueChanged.connect(self.on_valueChanged_int)
-                    self.__sig_connected = True
-                elif isinstance(self.w_value, QtWidgets.QDoubleSpinBox):
-                    self.w_value.valueChanged.connect(self.on_valueChanged_float)
-                    self.__sig_connected = True
-                elif isinstance(self.w_value, QtWidgets.QComboBox):
-                    self.w_value.currentIndexChanged.connect(self.on_currentIndexChanged)
-                    self.__sig_connected = True
-
-            elif self.__cfg.writable == PT.AttrWriteType.READ_WITH_WRITE:
-                raise NotImplementedError("READ_WITH_WRITE attributes are not yet implemented")
-
-            elif self.__cfg.writable == PT.AttrWriteType.WRITE:
-                raise NotImplementedError("Only WRITE attributes are not yet implemented")
-
-        elif self.__cfg.data_format == PT.AttrDataFormat.SPECTRUM:
-            raise NotImplementedError("Spectrum attributes are not yet implemented")
-
-        elif self.__cfg.data_format == PT.AttrDataFormat.IMAGE:
-            raise NotImplementedError("Image attributes are not yet implemented")
+        elif cfg.writable == PT.AttrWriteType.READ:
+            if is_numeric_type(dtype) or dtype in (PT.CmdArgType.DevString, PT.CmdArgType.DevEnum):
+                self.w_value = QtWidgets.QLineEdit(self)
+                self.w_value.setReadOnly(True)
+            elif dtype == PT.CmdArgType.DevBoolean:
+                self.w_value = QtWidgets.QCheckBox(self)
+                self.w_value.setText("")
+                self.w_value.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+                self.w_value.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
+            elif dtype == PT.CmdArgType.DevState:
+                self.w_value = QtWidgets.QLabel(self)
+                self.w_value.setText(str(PT.DevState.UNKNOWN))
+                self.w_value.setStyleSheet(state_style(PT.DevState.UNKNOWN))
+            else:
+                self.w_value = QtWidgets.QLineEdit(self)
+                self.w_value.setReadOnly(True)
 
         else:
-            raise NotImplementedError("Unexpected data format '{0!s}'".format(self.__cfg.data_format))
+            minimum = _limit(cfg.min_value, dtype)
+            maximum = _limit(cfg.max_value, dtype)
+            if is_numeric_type(dtype):
+                if minimum is not None and maximum is not None:
+                    if is_float_type(dtype):
+                        self.w_value = QtWidgets.QDoubleSpinBox(self)
+                    else:
+                        self.w_value = QtWidgets.QSpinBox(self)
+                        self.w_value.setSingleStep(1)
+                else:
+                    self.w_value = QtWidgets.QLineEdit(self)
+                self.__add_buttons()
+            elif dtype == PT.CmdArgType.DevBoolean:
+                self.w_value = QtWidgets.QCheckBox(self)
+                self.w_value.setText("")
+            elif dtype == PT.CmdArgType.DevEnum:
+                self.w_value = QtWidgets.QComboBox(self)
+                self.w_value.addItems(list(cfg.enum_labels))
+                self.__add_buttons()
+            elif dtype == PT.CmdArgType.DevString:
+                self.w_value = QtWidgets.QLineEdit(self)
+                self.__add_buttons()
+            else:
+                # e.g. writable DevState: show it, writes are not supported here
+                self.w_value = QtWidgets.QLineEdit(self)
+                self.w_value.setReadOnly(True)
+            self.__apply_limits()
+            self.__connect_editor()
 
-        # Add widgets to layout
+        self.w_value.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
+        self.w_value.setObjectName(cfg.name)
         self.layout.addWidget(self.w_value)
         if self.c_button is not None:
             self.c_button.released.connect(self.on_pb_c_released)
@@ -294,260 +229,144 @@ class QAttribute(QtWidgets.QWidget):
         if self.r_button is not None:
             self.r_button.released.connect(self.on_pb_r_released)
             self.layout.addWidget(self.r_button)
+        # Show the last value at once
+        if self.attributeValue() is not None:
+            self.on_value(self.attributeValue())
 
-    def event_callback(self, event):
-        # Tango event callback
-        self.__tango_event.emit(event)
+    def __add_buttons(self):
+        name = self.__cfg.name
+        self.c_button = self.__create_pushbutton(name, self, 'c', self.size().height())
+        self.r_button = self.__create_pushbutton(name, self, 'r', self.size().height())
 
-    @QtCore.pyqtSlot(PT.EventData)
-    def event_handler(self, ev):
-        # Event handler slot
-        if ev.err:
-            print("[E] {0!s}".format(ev.errors[0].desc))
+    def __apply_limits(self):
+        cfg, w = self.__cfg, self.w_value
+        if cfg is None or w is None:
             return
+        if isinstance(w, (QtWidgets.QSpinBox, QtWidgets.QDoubleSpinBox)):
+            minimum = _limit(cfg.min_value, cfg.data_type)
+            maximum = _limit(cfg.max_value, cfg.data_type)
+            if isinstance(w, QtWidgets.QDoubleSpinBox):
+                decimals = 2
+                fmt = cfg.format or ""
+                if "." in fmt:
+                    try:
+                        decimals = int(fmt.split(".")[1].rstrip("fFeEgG"))
+                    except ValueError:
+                        pass
+                w.setDecimals(decimals)
+                w.setSingleStep(10 ** -decimals if decimals > 0 else 1.0)
+            if minimum is not None and maximum is not None:
+                w.setRange(minimum, maximum)
+            unit = cfg.unit if cfg.unit not in ("", "No unit", "Not specified") else ""
+            w.setSuffix(" " + unit if unit else "")
 
-        if ev.attr_value.name.lower() != self.attr.name().lower():
-            print("[E] Attribute name does not match! ({0} != {1})".format(ev.attr_value.name, self.attr.name()))
-            return
+    def __connect_editor(self):
+        w = self.w_value
+        if isinstance(w, QtWidgets.QLineEdit):
+            w.textChanged.connect(self.on_textChanged)
+        elif isinstance(w, QtWidgets.QCheckBox):
+            w.toggled.connect(self.on_toggled)
+        elif isinstance(w, QtWidgets.QSpinBox):
+            w.valueChanged.connect(self.on_valueChanged_int)
+        elif isinstance(w, QtWidgets.QDoubleSpinBox):
+            w.valueChanged.connect(self.on_valueChanged_float)
+        elif isinstance(w, QtWidgets.QComboBox):
+            w.currentIndexChanged.connect(self.on_currentIndexChanged)
 
-        # Get attribute value
-        attr_value = ev.attr_value.value
-
-        if self.__cfg.data_format == PT.AttrDataFormat.SCALAR:
-
-            if self.__cfg.writable == PT.AttrWriteType.READ_WRITE and self.w_value_c:
-                # Value has changed. We set text red
-                self.w_value.setStyleSheet("color: red;")
-                return
-
-            # We have to update the value
-            if isinstance(self.w_value, QtWidgets.QLineEdit):
-                self.w_value.blockSignals(True)
-                if self.__isNumeric(self.__cfg.data_type):
-                    self.w_value.setText(self.__format_value(attr_value))
-
-                elif self.__cfg.data_type == PT.CmdArgType.DevEnum:
-                    self.w_value.setText(str(self.__enum_labels[attr_value]))
-                else:
-                    self.w_value.setText(str(attr_value))
-                self.w_value.blockSignals(False)
-
-            elif isinstance(self.w_value, QtWidgets.QSpinBox) or isinstance(self.w_value, QtWidgets.QDoubleSpinBox):
-                self.w_value.blockSignals(True)
-                self.w_value.setValue(attr_value)
-                self.w_value.blockSignals(False)
-
-            elif isinstance(self.w_value, QtWidgets.QCheckBox):
-                # Put checkbox
-                if attr_value:
-                    self.w_value.setCheckState(QtCore.Qt.Checked)
-                else:
-                    self.w_value.setCheckState(QtCore.Qt.Unchecked)
-
-            elif isinstance(self.w_value, QtWidgets.QComboBox):
-                self.w_value.blockSignals(True)
-                self.w_value.setCurrentIndex(attr_value)
-                self.w_value.blockSignals(False)
-
-            elif isinstance(self.w_value, QtWidgets.QLabel):
-                if self.__cfg.data_type == PT.CmdArgType.DevState:
-                    self.w_value.setText(str(attr_value))
-                    self.w_value.setStyleSheet(self.__devstate_style_common+self.__devstate_style[attr_value])
-
-            # Emit updated event
-            self.updated.emit(ev.attr_value)
-
-        elif self.__cfg.data_format == PT.AttrDataFormat.SPECTRUM:
-            print("[E] Events for spectrum attributes are not supported")
-            return
-
-        elif self.__cfg.data_format == PT.AttrDataFormat.IMAGE:
-            print("[E] Events for image attributes are not supported")
-            return
-
+    # -- Formatting / parsing ----------------------------------------------------------
     def __format_value(self, value):
-        fmt = "{0"
-        if self.__cfg.format != "":
-            cfg_fmt = self.__cfg.format.lower()
-            m = re.match("%(\d*)\.?(\d*)([diufegx]+)", cfg_fmt)
-            if m is not None:
-                w = m.groups()[0]
-                p = m.groups()[1]
-                t = m.groups()[2]
+        cfg = self.__cfg
+        unit = cfg.unit if cfg.unit not in ("", "No unit", "Not specified") else ""
+        if cfg.data_type == PT.CmdArgType.DevEnum or not is_numeric_type(cfg.data_type):
+            return format_scalar(value, "", cfg.data_type, cfg.enum_labels)
+        return format_scalar(value, cfg.format, cfg.data_type, unit=unit)
 
-                if t in ('d', 'i', 'u'):
-                    fmt += ":d"
-                elif t in ['f', 'e', 'g']:
-                    fmt += ':'
-                    if w != "":
-                        fmt += "{0:d}".format(int(w))
-                    if p != "":
-                        fmt += ".{0:d}".format(int(p))
-                    fmt += m.groups()[2]
-                elif t == 'x':
-                    fmt = "0x" + fmt +'x'
-                else:
-                    fmt += "!s"
-            else:
-                fmt += "!s"
-        else:
-            fmt += "!s"
-        fmt += '}'
+    def __check_value(self, text):
+        cfg = self.__cfg
+        dtype = cfg.data_type
+        unit = cfg.unit if cfg.unit not in ("", "No unit", "Not specified") else ""
+        if unit:
+            text = text.replace(unit, "")
+        text = text.strip()
+        if dtype == PT.CmdArgType.DevString:
+            return text
         try:
-            if self.__cfg.unit != "":
-                fmt += " " + self.__cfg.unit
-        except Exception:
-            pass
-        return fmt.format(value)
-
-    def __isNumeric(self, data_type):
-        __numeric_types = (PT.CmdArgType.DevLong,
-                           PT.CmdArgType.DevLong64,
-                           PT.CmdArgType.DevShort,
-                           PT.CmdArgType.DevUChar,
-                           PT.CmdArgType.DevULong,
-                           PT.CmdArgType.DevULong64,
-                           PT.CmdArgType.DevUShort,
-                           PT.CmdArgType.DevDouble,
-                           PT.CmdArgType.DevFloat)
-        return data_type in __numeric_types
-
-    def __check_value(self, value, data_type):
-        if self.__unit is not None and self.__unit != "":
-            # Remove unit from value string
-            value = value.replace(self.__unit, "").strip()
-
-        if data_type == PT.CmdArgType.DevBoolean:
-            return bool(value)
-        elif data_type == PT.CmdArgType.DevDouble or data_type == PT.CmdArgType.DevFloat:
-            try:
-                return float(value)
-            except ValueError:
-                return None
-        elif data_type == PT.CmdArgType.DevEnum:
-            try:
-                return int(value)
-            except ValueError:
-                return None
-        elif data_type in (PT.CmdArgType.DevLong,
-                           PT.CmdArgType.DevLong64,
-                           PT.CmdArgType.DevShort,
-                           PT.CmdArgType.DevUChar,
-                           PT.CmdArgType.DevULong,
-                           PT.CmdArgType.DevULong64,
-                           PT.CmdArgType.DevUShort):
-            try:
-                return int(value)
-            except ValueError:
-                return None
-        elif data_type == PT.CmdArgType.DevState:
-            if type(value) == PT.DevState:
-                return value
-            else:
-                return None
-        elif data_type == PT.CmdArgType.DevString:
-            return str(value)
-        else:
+            if is_float_type(dtype):
+                return float(text)
+            if is_int_type(dtype):
+                return int(text, 0)
+        except ValueError:
             return None
+        return None
 
     def __create_pushbutton(self, name, parent, action, sz):
         pb = QtWidgets.QPushButton(parent)
         pb.setEnabled(False)
         pb.setGeometry(QtCore.QRect(0, 0, sz, sz))
-        pb.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
+        pb.setSizePolicy(QtWidgets.QSizePolicy.Policy.Fixed, QtWidgets.QSizePolicy.Policy.Fixed)
         pb.setText("")
         icon = QtGui.QIcon()
-        if action == 'c':
-            icon.addPixmap(QtGui.QPixmap(get_image_path("confirm.png")), QtGui.QIcon.Normal, QtGui.QIcon.Off)
-        else:
-            icon.addPixmap(QtGui.QPixmap(get_image_path("reject.png")), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        image = "confirm.png" if action == 'c' else "reject.png"
+        icon.addPixmap(QtGui.QPixmap(get_image_path(image)), QtGui.QIcon.Mode.Normal, QtGui.QIcon.State.Off)
         pb.setIcon(icon)
         pb.setObjectName(name + "_" + action)
         return pb
 
-    @QtCore.pyqtSlot()
+    # -- Slots ---------------------------------------------------------------------------
+    def __set_editing(self, editing):
+        self.w_value_c = editing
+        if self.c_button is not None:
+            self.c_button.setEnabled(editing)
+            self.r_button.setEnabled(editing)
+        self.w_value.setStyleSheet("color: darkgreen;" if editing else "")
+
+    @Slot()
     def on_pb_c_released(self):
         # Confirm
-        try:
-            if isinstance(self.w_value, QtWidgets.QLineEdit):
-                val = self.__check_value(self.w_value.text(), self.__cfg.data_type)
-                if val is None:
-                    raise ValueError("Bad value")
-                else:
-                    self.attr.write(val)
-            elif isinstance(self.w_value, QtWidgets.QSpinBox) or isinstance(self.w_value, QtWidgets.QDoubleSpinBox):
-                self.attr.write(self.w_value.value())
-            elif isinstance(self.w_value, QtWidgets.QComboBox):
-                self.attr.write(self.w_value.currentIndex())
-            self.w_value_c = False
-            self.c_button.setDisabled(True)
-            self.r_button.setDisabled(True)
-            self.w_value.setStyleSheet("")
-        except PT.DevFailed as e:
-            QtWidgets.QMessageBox.critical(self, "Failed to set attribute", e.args[0].desc)
-        except ValueError:
-            QtWidgets.QMessageBox.critical(self, "Value error", "Failed to convert value")
-        except Exception as e:
-            QtWidgets.QMessageBox.critical(self, "Exception", str(e))
-
-    @QtCore.pyqtSlot()
-    def on_pb_r_released(self):
-        # Reject
-        self.w_value.blockSignals(True)
-        try:
-            value = self.attr.read().value
-            if isinstance(self.w_value, QtWidgets.QLineEdit):
-                if self.__isNumeric(self.__cfg.data_type):
-                    self.w_value.setText(self.__format_value(value))
-                else:
-                    self.w_value.setText(str(value))
-            elif isinstance(self.w_value, QtWidgets.QSpinBox) or isinstance(self.w_value, QtWidgets.QDoubleSpinBox):
-                self.w_value.setValue(value)
-            elif isinstance(self.w_value, QtWidgets.QComboBox):
-                self.w_value.setCurrentIndex(value)
-            self.w_value_c = False
-            self.c_button.setDisabled(True)
-            self.r_button.setDisabled(True)
-            self.w_value.setStyleSheet("")
-        except PT.DevFailed as e:
-            QtWidgets.QMessageBox.critical(self, "Failed to set attribute", e.args[0].desc)
-        except ValueError:
-            QtWidgets.QMessageBox.critical(self, "Value error", "Failed to convert value")
-        except Exception as e:
-            QtWidgets.QMessageBox.critical(self, "Exception", str(e))
-        self.w_value.blockSignals(False)
-
-    @QtCore.pyqtSlot(str)
-    def on_textChanged(self, text):
-        self.w_value_c = True
-        self.c_button.setDisabled(False)
-        self.r_button.setDisabled(False)
-        self.w_value.setStyleSheet("color: darkgreen;")
-
-    @QtCore.pyqtSlot(int)
-    def on_stateChanged(self, state):
-        if state == QtCore.Qt.Checked:
-            self.attr.write(True)
+        w = self.w_value
+        if isinstance(w, QtWidgets.QLineEdit):
+            val = self.__check_value(w.text())
+            if val is None:
+                QtWidgets.QMessageBox.critical(self, "Value error", "Failed to convert value")
+                return
+        elif isinstance(w, (QtWidgets.QSpinBox, QtWidgets.QDoubleSpinBox)):
+            val = w.value()
+        elif isinstance(w, QtWidgets.QComboBox):
+            val = w.currentIndex()
         else:
-            self.attr.write(False)
+            return
+        self.write(val)
+        self.__set_editing(False)
 
-    @QtCore.pyqtSlot(int)
+    @Slot()
+    def on_pb_r_released(self):
+        # Reject: show the last value again
+        self.__set_editing(False)
+        if self.attributeValue() is not None:
+            self.on_value(self.attributeValue())
+        elif self.model() is not None:
+            self.model().refresh()
+
+    @Slot(str)
+    def on_textChanged(self, text):
+        self.__set_editing(True)
+
+    @Slot(bool)
+    def on_toggled(self, checked):
+        self.write(bool(checked))
+
+    # Kept for compatibility with 0.1 subclasses
+    def on_stateChanged(self, state):
+        self.write(bool(state))
+
+    @Slot(int)
     def on_valueChanged_int(self, value):
-        self.w_value_c = True
-        self.c_button.setDisabled(False)
-        self.r_button.setDisabled(False)
-        self.w_value.setStyleSheet("color: darkgreen;")
+        self.__set_editing(True)
 
-    @QtCore.pyqtSlot(float)
+    @Slot(float)
     def on_valueChanged_float(self, value):
-        self.w_value_c = True
-        self.c_button.setDisabled(False)
-        self.r_button.setDisabled(False)
-        self.w_value.setStyleSheet("color: darkgreen;")
+        self.__set_editing(True)
 
-    @QtCore.pyqtSlot(int)
+    @Slot(int)
     def on_currentIndexChanged(self, index):
-        self.w_value_c = True
-        self.c_button.setDisabled(False)
-        self.r_button.setDisabled(False)
-        self.w_value.setStyleSheet("color: darkgreen;")
+        self.__set_editing(True)

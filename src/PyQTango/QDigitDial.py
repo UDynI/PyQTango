@@ -5,25 +5,23 @@ Created on Tue May 12 11:13:29 2020
 @author: Michele Devetta <michele.devetta@cnr.it>
 """
 
+from .qt import QtCore, QtGui, QtWidgets, Signal, Slot, event_pos
+
 import math
 import re
-from PyQt5 import QtCore
-from PyQt5 import QtWidgets
-from PyQt5 import QtGui
 
 from .config import get_image_path
 
 
 class QDoubleClickLabel(QtWidgets.QLabel):
-    doubleClickSignal = QtCore.pyqtSignal()
+    doubleClickSignal = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMouseTracking(True)
 
-    @QtCore.pyqtSlot(QtGui.QMouseEvent)
     def mouseDoubleClickEvent(self, event):
-        evps = event.pos()
+        evps = event_pos(event)
         sz = self.size()
         if evps.x() > 0 and evps.x() < sz.width() and evps.y() > 0 and evps.y() < sz.height():
             self.doubleClickSignal.emit()
@@ -36,7 +34,7 @@ class QArrowButton(QtWidgets.QLabel):
     DOWN = 1
 
     # OnClick signal
-    clickSignal = QtCore.pyqtSignal(int)
+    clickSignal = Signal(int)
 
     def __init__(self, direction, parent=None):
         QtWidgets.QLabel.__init__(self, parent)
@@ -76,31 +74,27 @@ class QArrowButton(QtWidgets.QLabel):
             else:
                 return False
 
-    @QtCore.pyqtSlot(QtGui.QMouseEvent)
     def mousePressEvent(self, event):
-        ps = event.pos()
+        ps = event_pos(event)
         if self.__check_t(ps.x(), ps.y()):
             self.setPixmap(self.press_pic)
         else:
             self.setPixmap(self.off_pic)
 
-    @QtCore.pyqtSlot(QtGui.QMouseEvent)
     def mouseReleaseEvent(self, event):
-        ps = event.pos()
+        ps = event_pos(event)
         if self.__check_t(ps.x(), ps.y()):
             self.setPixmap(self.on_pic)
             # Emit clicked signal
             self.clickSignal.emit(self.direction)
 
-    @QtCore.pyqtSlot(QtGui.QMouseEvent)
     def mouseMoveEvent(self, event):
-        ps = event.pos()
+        ps = event_pos(event)
         if self.__check_t(ps.x(), ps.y()):
             self.setPixmap(self.on_pic)
         else:
             self.setPixmap(self.off_pic)
 
-    @QtCore.pyqtSlot(QtGui.QResizeEvent)
     def resizeEvent(self, event):
         if event.size().isValid():
             w = event.size().width()
@@ -123,8 +117,8 @@ class QArrowButton(QtWidgets.QLabel):
 
 class QSingleDigitDial(QtWidgets.QWidget):
 
-    valueChangeSignal = QtCore.pyqtSignal(float)
-    doubleClickSignal = QtCore.pyqtSignal()
+    valueChangeSignal = Signal(float)
+    doubleClickSignal = Signal()
 
     def __init__(self, step, parent=None):
         # Parent constructor
@@ -142,14 +136,14 @@ class QSingleDigitDial(QtWidgets.QWidget):
         self._value.resize(78, 55)
         self._value.move(0, 98)
         self._value.setText("0")
-        self._value.setAlignment(QtCore.Qt.AlignCenter)
+        self._value.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self._value.setStyleSheet("text-align: center; font-size: 45px; font-weight:bold; color: black; ")
         self._value.doubleClickSignal.connect(self.onDoubleClickEvent)
         self._write_value = QDoubleClickLabel(self)
         self._write_value.resize(78, 40)
         self._write_value.move(0, 68)
         self._write_value.setText("0")
-        self._write_value.setAlignment(QtCore.Qt.AlignCenter)
+        self._write_value.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self._write_value.setStyleSheet("text-align: center; font-size: 30px; font-weight:bold; color: darkred; ")
         self._write_value.doubleClickSignal.connect(self.onDoubleClickEvent)
         self._down = QArrowButton(QArrowButton.DOWN, self)
@@ -177,18 +171,17 @@ class QSingleDigitDial(QtWidgets.QWidget):
     def step(self):
         return self._step
 
-    @QtCore.pyqtSlot(int)
+    @Slot(int)
     def onClickEvent(self, direction):
         if direction == QArrowButton.UP:
             self.valueChangeSignal.emit(self._step)
         else:
             self.valueChangeSignal.emit(-self._step)
 
-    @QtCore.pyqtSlot()
+    @Slot()
     def onDoubleClickEvent(self):
         self.doubleClickSignal.emit()
 
-    @QtCore.pyqtSlot(QtGui.QResizeEvent)
     def resizeEvent(self, event):
         if event.size().isValid() and event.oldSize().isValid():
             w = event.size().width()
@@ -226,7 +219,7 @@ class QSingleDigitDial(QtWidgets.QWidget):
 
 class QDigitDial(QtWidgets.QWidget):
 
-    valueChangeSignal = QtCore.pyqtSignal(float, float)
+    valueChangeSignal = Signal(float, float)
 
     def __init__(self, f, parent=None):
         # Parent constructor
@@ -310,7 +303,7 @@ class QDigitDial(QtWidgets.QWidget):
 
         self.resize(offset, 216)
 
-    @QtCore.pyqtSlot(float)
+    @Slot(float)
     def onValueChangeEvent(self, step):
         # Add step
         old = self._w_value
@@ -318,7 +311,7 @@ class QDigitDial(QtWidgets.QWidget):
         self.update_w_value()
         self.valueChangeSignal.emit(self._w_value, old)
 
-    @QtCore.pyqtSlot()
+    @Slot()
     def onDoubleClickEvent(self):
         if self.datatype is float:
             val, ok = QtWidgets.QInputDialog.getDouble(self, "New position", "Insert new position", value=self.value(), decimals=self.mantissa)
@@ -411,7 +404,6 @@ class QDigitDial(QtWidgets.QWidget):
             except IndexError:
                 self.wdg[i].setWriteValue(0)
 
-    @QtCore.pyqtSlot(QtGui.QResizeEvent)
     def resizeEvent(self, event):
         if event.size().isValid() and event.oldSize().isValid():
             w = event.size().width()
