@@ -63,6 +63,19 @@ class Gallery(QtWidgets.QWidget):
             qa = QAttribute(form_box)
             qa.setTangoAttribute(attr(device, attrs["qattribute"]))
             form.addRow("QAttribute (0.1 API)", qa)
+        if "bool" in attrs:
+            bl = W.QBooleanLabel(form_box)
+            bl.setModel(attr(device, attrs["bool"]))
+            tick = W.QBooleanLabel(form_box)
+            tick.displayMode = "tick"
+            tick.setModel(attr(device, attrs["bool"]))
+            row = QtWidgets.QHBoxLayout()
+            row.addWidget(bl, 1)
+            row.addWidget(tick)
+            form.addRow("QBooleanLabel", row)
+            sw = W.QSwitchSetter(form_box)
+            sw.setModel(attr(device, attrs["bool"]))
+            form.addRow("QSwitchSetter", sw)
         if "alarm" in attrs:
             al = W.QValueLabel(form_box)
             al.setModel(attr(device, attrs["alarm"]))
@@ -96,7 +109,8 @@ class Gallery(QtWidgets.QWidget):
 def main():
     app = make_application(sys.argv)
     device = sys.argv[1] if len(sys.argv) > 1 else "sys/tg_test/1"
-    attrs = {"value": "double_scalar", "wheel": "double_scalar_w", "qattribute": "long_scalar_w"}
+    attrs = {"value": "double_scalar", "wheel": "double_scalar_w", "qattribute": "long_scalar_w",
+             "bool": "boolean_scalar"}
     g = Gallery(device, attrs)
     g.resize(1100, 700)
     g.show()

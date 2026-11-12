@@ -23,11 +23,26 @@ class QErrorDialog(QtWidgets.QDialog):
         icon = QtWidgets.QLabel(self)
         icon.setPixmap(self.style().standardIcon(QtWidgets.QStyle.StandardPixmap.SP_MessageBoxCritical).pixmap(32, 32))
         top.addWidget(icon, 0, Qt.AlignmentFlag.AlignTop)
-        msg = QtWidgets.QLabel(self)
-        msg.setWordWrap(True)
-        msg.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        msg.setText("<b>{0}</b><br/>{1}".format(record.source or record.reason, record.message))
-        top.addWidget(msg, 1)
+        message = record.message or ""
+        if len(message) > 600 or message.count("\n") > 8:
+            # Very long or multi-line errors: scrollable, capped (ATK 10 ErrorPane caps at 800x600)
+            head = QtWidgets.QVBoxLayout()
+            title = QtWidgets.QLabel("<b>{0}</b>".format(record.source or record.reason), self)
+            title.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            head.addWidget(title)
+            msg = QtWidgets.QPlainTextEdit(self)
+            msg.setReadOnly(True)
+            msg.setPlainText(message)
+            msg.setMaximumHeight(300)
+            head.addWidget(msg)
+            top.addLayout(head, 1)
+        else:
+            msg = QtWidgets.QLabel(self)
+            msg.setWordWrap(True)
+            msg.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            msg.setText("<b>{0}</b><br/>{1}".format(record.source or record.reason, message))
+            top.addWidget(msg, 1)
+        self.message_widget = msg
         layout.addLayout(top)
 
         self.details = QtWidgets.QPlainTextEdit(self)
@@ -35,6 +50,7 @@ class QErrorDialog(QtWidgets.QDialog):
         self.details.setPlainText(record.text())
         self.details.setVisible(False)
         self.details.setMinimumHeight(160)
+        self.details.setMaximumHeight(400)
         layout.addWidget(self.details)
 
         buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Ok, parent=self)
@@ -45,6 +61,7 @@ class QErrorDialog(QtWidgets.QDialog):
         copy.clicked.connect(lambda: QtWidgets.QApplication.clipboard().setText(record.text()))
         buttons.accepted.connect(self.accept)
         layout.addWidget(buttons)
+        self.setMaximumWidth(800)
         self.resize(480, 160)
 
 

@@ -76,7 +76,8 @@ header.setDevice("sys/tg_test/1")
 
 Setters show the set point when it is meaningful (memorized attribute, write-only
 attribute, or already written by this process) and the read value otherwise;
-set `setPointMode = "always"` for the ATK behaviour.
+set `setPointMode = "always"` for the ATK behaviour. `setNeedsConfirmation(True)`
+asks before each write, and a failed write puts the setter back to the device value.
 
 ## Widgets
 
@@ -86,6 +87,7 @@ set `setPointMode = "always"` for the ATK behaviour.
 | `QStateLabel`, `QStatusViewer`, `QStateStatusViewer` | State (ATK colours) and status |
 | `QWheelEditor`, `QAttributeWheelEditor` | Compact per-digit wheel editor (mouse, wheel, keyboard) |
 | `QBooleanSetter`, `QEnumSetter`, `QStringSetter`, `QNumberSetter`, `QArraySetter` | Setters; `create_viewer()` / `create_setter()` pick one from a configuration |
+| `QBooleanLabel`, `QSwitchButton`, `QSwitchSetter` | Boolean label / tick viewer, on/off switch and switch setter with optional confirmation (ATK 10) |
 | `QScalarListViewer` | Label / value / setter / unit grid for a device (operator/expert view) |
 | `QAttribute`, `QCommandExecuter` | 0.1 widgets, now on the shared models (same API) |
 | `QErrorDialog`, `QErrorHistory`, `QJobProgressDialog` | Errors and long operations |

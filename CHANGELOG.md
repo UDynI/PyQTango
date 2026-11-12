@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.2.1
+
+Follows the widget changes of ATK 10.0.6 (ATK 9.4.15 to 10.0.6).
+
+### New widgets
+- `QBooleanLabel`: DevBoolean viewer, `displayMode` "label" (ATK `BooleanScalarLabelViewer`:
+  label on green/white, red on error) or "tick" (ATK `BooleanScalarTickViewer`); colours and
+  true/false texts configurable; optional `hideUntilValid`.
+- `QSwitchButton`: painted, animated on/off switch (ATK `SwitchButton`), keyboard accessible,
+  optional Yes/No confirmation; `switched(bool)` only for user toggles.
+- `QSwitchSetter`: title + switch bound to a DevBoolean attribute (ATK
+  `BooleanScalarSwitchButton`): confirmation, true/false titles, quality colour, disabled on
+  error, toggle dropped when the value changes while the question is open.
+
+### Changed
+- Setters: `setNeedsConfirmation()` / `setConfirmMessage()` ask before writing (ATK
+  `BooleanScalarCheckBoxViewer` and `EnumScalarComboEditor`); after a failed write the setter
+  shows the device value again (ATK 10 set-error listeners).
+- `QStringSetter.setWriteOnEdit()` writes on every keystroke (ATK `updateImmediately`).
+- `QErrorDialog`: long or multi-line messages are shown in a capped, scrollable area.
+
+
 ## 0.2.0
 
 ### Qt5/Qt6 portability

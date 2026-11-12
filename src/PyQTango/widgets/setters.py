@@ -3,7 +3,9 @@
 Attribute setters (ATK *Editor / *Setter widgets) and viewer/setter factories.
 
 Every setter shows the attribute set point, writes asynchronously, and turns its
-frame red with the error in the tooltip when a write fails.
+frame red with the error in the tooltip when a write fails; it then shows the
+device value again (ATK 10 "set error" behaviour). ``setNeedsConfirmation(True)``
+asks before each write (ATK ``needsConfirmation`` / ``hasConfirmWindow``).
 """
 
 import tango
@@ -15,6 +17,7 @@ from .base import TangoAttributeWidget, model_name_property
 from .value import QValueLabel
 from .state import QStateLabel
 from .wheel import QAttributeWheelEditor
+from .boolean import ask_yes_no
 
 _WRITABLE = (tango.AttrWriteType.READ_WRITE, tango.AttrWriteType.READ_WITH_WRITE, tango.AttrWriteType.WRITE)
 _ERROR_STYLE = "border: 1px solid red;"
@@ -26,6 +29,42 @@ class _SetterMixin(TangoAttributeWidget):
     see :meth:`TangoAttributeWidget.set_point`. """
 
     setPointMode = "auto"
+    _needs_confirmation = False
+    _confirm_message = "Change {attribute} from {current} to {new}?"
+
+    # -- Confirmation ------------------------------------------------------------------
+    def setNeedsConfirmation(self, b):
+        """ Ask "Change <attr> from <current> to <new>?" before each write """
+        self._needs_confirmation = bool(b)
+
+    def needsConfirmation(self):
+        return self._needs_confirmation
+
+    def setConfirmMessage(self, text):
+        """ Question text; ``{attribute}``, ``{current}`` and ``{new}`` are replaced """
+        self._confirm_message = text or _SetterMixin._confirm_message
+
+    def ask_confirmation(self, message):
+        """ Override (or replace on the instance) to change how confirmation is asked """
+        return ask_yes_no(self, "Confirm", message)
+
+    def confirm_write(self, new_text):
+        """ True when the write may go ahead """
+        if not self._needs_confirmation:
+            return True
+        cfg = self.attributeConfig()
+        name = cfg.label if (cfg is not None and cfg.label) else (self.model().attr_name if self.model() else "")
+        value = self.attributeValue()
+        current = self.text_of(self.set_point(value, self.setPointMode)) if value is not None else "?"
+        return bool(self.ask_confirmation(self._confirm_message.format(attribute=name, current=current, new=new_text)))
+
+    def text_of(self, value):
+        return str(value)
+
+    def revert(self):
+        """ Show the device value again (after a refused or failed write) """
+        if self.attributeValue() is not None:
+            self.on_value(self.attributeValue())
 
     def on_write_done(self, err):
         if err is None:
@@ -34,6 +73,8 @@ class _SetterMixin(TangoAttributeWidget):
         else:
             self.setStyleSheet(_ERROR_STYLE)
             self.setToolTip(self.tooltip_text() + "<br/><font color='red'>Write failed: {0}</font>".format(err.message))
+            self._editing = False
+            self.revert()
 
     def on_config(self, cfg):
         self.setEnabled(cfg.writable in _WRITABLE)
@@ -57,6 +98,9 @@ class QBooleanSetter(_SetterMixin, QtWidgets.QCheckBox):
         self.clicked.connect(self._on_clicked)
 
     def _on_clicked(self, checked):
+        if not self.confirm_write(self.text_of(bool(checked))):
+            self.revert()
+            return
         self.write(bool(checked))
 
     def on_value(self, value):
@@ -83,7 +127,16 @@ class QEnumSetter(_SetterMixin, QtWidgets.QComboBox):
             self.addItems(labels)
             self.blockSignals(False)
 
+    def text_of(self, value):
+        try:
+            return self.itemText(int(value))
+        except (TypeError, ValueError):
+            return str(value)
+
     def _on_activated(self, index):
+        if not self.confirm_write(self.itemText(index)):
+            self.revert()
+            return
         self.write(int(index))
 
     def on_value(self, value):
@@ -126,8 +179,12 @@ class _LineSetter(_SetterMixin, QtWidgets.QLineEdit):
             self.setStyleSheet(_ERROR_STYLE)
             self.setToolTip(self.tooltip_text() + "<br/><font color='red'>{0}</font>".format(e))
             return
+        refused = not self.confirm_write(self.text_of(value))
         self._editing = False
         self.setStyleSheet("")
+        if refused:
+            self.revert()
+            return
         self.write(value)
 
     def on_value(self, value):
@@ -141,11 +198,38 @@ class _LineSetter(_SetterMixin, QtWidgets.QLineEdit):
     def display(self, value):
         return str(value)
 
+    def text_of(self, value):
+        return self.display(value)
+
 
 class QStringSetter(_LineSetter):
-    """ Line edit writing a DevString attribute on Enter """
+    """ Line edit writing a DevString attribute on Enter.
+
+    ``setWriteOnEdit(True)`` writes on every keystroke instead (ATK
+    ``StringScalarEditor`` ``updateImmediately``; confirmation is then not asked).
+    """
 
     modelName = model_name_property()
+    _write_on_edit = False
+
+    def setWriteOnEdit(self, b):
+        self._write_on_edit = bool(b)
+
+    def writeOnEdit(self):
+        return self._write_on_edit
+
+    def _on_edited(self, text):
+        if self._write_on_edit:
+            self._editing = False
+            self.setStyleSheet("")
+            self.write(text)
+            return
+        _LineSetter._on_edited(self, text)
+
+    def on_value(self, value):
+        if self._write_on_edit and self.hasFocus():
+            return  # do not move the cursor under the user's fingers
+        _LineSetter.on_value(self, value)
 
 
 class QNumberSetter(_LineSetter):

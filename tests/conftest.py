@@ -38,6 +38,7 @@ class PQTDevice(Device):
         self._rw = 10.0
         self._long = 5
         self._bool = False
+        self._switch = False
         self._enum = Color.Red
         self._str = "hello"
         self.set_state(DevState.ON)
@@ -72,6 +73,22 @@ class PQTDevice(Device):
     @rw_bool.write
     def rw_bool(self, v):
         self._bool = v
+
+    @attribute(dtype=bool, access=AttrWriteType.READ_WRITE, label="Pump")
+    def rw_switch(self):
+        return self._switch
+
+    @rw_switch.write
+    def rw_switch(self, v):
+        self._switch = v
+
+    @attribute(dtype=bool, access=AttrWriteType.READ_WRITE)
+    def rw_locked(self):
+        return False
+
+    @rw_locked.write
+    def rw_locked(self, v):
+        raise RuntimeError("Locked on purpose")
 
     @attribute(dtype=Color, access=AttrWriteType.READ_WRITE)
     def rw_enum(self):

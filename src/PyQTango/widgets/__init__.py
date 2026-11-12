@@ -4,13 +4,14 @@ PyQTango.widgets: reusable, event-aware Tango widgets.
 
 Attribute widgets (bind with ``setModel("dom/fam/mem/attr")``):
     QValueLabel, QStateLabel, QStatusViewer, QWheelEditor, QAttributeWheelEditor,
-    QBooleanSetter, QEnumSetter, QStringSetter, QNumberSetter, QArraySetter
+    QBooleanSetter, QEnumSetter, QStringSetter, QNumberSetter, QArraySetter,
+    QBooleanLabel, QSwitchSetter
 
 Device widgets (bind with ``setDevice("dom/fam/mem")``):
     QStateStatusViewer, QScalarListViewer
 
 Generic building blocks:
-    QErrorDialog, QErrorHistory, QConsole, QJobProgressDialog, QNavigationBar,
+    QSwitchButton, QErrorDialog, QErrorHistory, QConsole, QJobProgressDialog, QNavigationBar,
     NavigationHistory, LazyTreeModel, TreeNode, QMultiLineDelegate,
     PropertyTableModel, QPropertyTable, QCodeEditor, QSearchableEditor,
     QCompleterLineEdit
@@ -23,6 +24,7 @@ from .state import QStateLabel, QStatusViewer, QStateStatusViewer
 from .wheel import QWheelEditor, QAttributeWheelEditor
 from .setters import (QBooleanSetter, QEnumSetter, QStringSetter, QNumberSetter, QArraySetter,
                       create_viewer, create_setter)
+from .boolean import QBooleanLabel, QSwitchButton, QSwitchSetter
 from .scalar_list import QScalarListViewer
 from .errors import QErrorDialog, QErrorHistory, show_error
 from .console import QConsole
@@ -39,6 +41,7 @@ __all__ = [
     "QWheelEditor", "QAttributeWheelEditor",
     "QBooleanSetter", "QEnumSetter", "QStringSetter", "QNumberSetter", "QArraySetter",
     "create_viewer", "create_setter", "QScalarListViewer",
+    "QBooleanLabel", "QSwitchButton", "QSwitchSetter",
     "QErrorDialog", "QErrorHistory", "show_error", "QConsole", "QJobProgressDialog",
     "QNavigationBar", "NavigationHistory", "LazyTreeModel", "TreeNode",
     "QMultiLineDelegate", "PropertyTableModel", "QPropertyTable",
