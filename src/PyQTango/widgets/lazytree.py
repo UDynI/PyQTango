@@ -169,12 +169,26 @@ class LazyTreeModel(QtCore.QAbstractItemModel):
         if n.leaf or n.loaded or n.loading:
             return
         n.loading = True
+        # Each load has a generation: a result of an older load, or of a node removed
+        # from the tree meanwhile, is dropped
+        gen = n._load_gen = getattr(n, "_load_gen", 0) + 1
         self.beginInsertRows(parent, 0, 0)
         n.children = [_PlaceholderNode(self.LOADING_TEXT, n)]
         self.endInsertRows()
         ctx = self.context
-        run_async(n.populate, ctx, on_done=lambda kids, node=n: self._loaded(node, kids),
-                  on_error=lambda err, node=n: self._failed(node, err), source=n.label)
+        run_async(n.populate, ctx, on_done=lambda kids, node=n, g=gen: self._loaded(node, kids, g),
+                  on_error=lambda err, node=n, g=gen: self._failed(node, err, g), source=n.label, owner=self)
+
+    def _current(self, n, gen):
+        """ True when ``gen`` is the last load of ``n`` and ``n`` is still in the tree """
+        if gen is not None and gen != getattr(n, "_load_gen", 0):
+            return False
+        while n is not self.root:
+            p = n.parent
+            if p is None or not any(c is n for c in p.children):
+                return False
+            n = p
+        return True
 
     def _replace_children(self, n, kids):
         parent = self.index_of(n)
@@ -189,14 +203,18 @@ class LazyTreeModel(QtCore.QAbstractItemModel):
             n.children = list(kids)
             self.endInsertRows()
 
-    def _loaded(self, n, kids):
+    def _loaded(self, n, kids, gen=None):
+        if not self._current(n, gen):
+            return
         n.loading = False
         n.loaded = True
         n.error = None
         self._replace_children(n, kids or [])
         self.nodeLoaded.emit(self.index_of(n))
 
-    def _failed(self, n, err):
+    def _failed(self, n, err, gen=None):
+        if not self._current(n, gen):
+            return
         n.loading = False
         n.loaded = True
         n.error = err
@@ -204,6 +222,27 @@ class LazyTreeModel(QtCore.QAbstractItemModel):
         ph.error = err
         self._replace_children(n, [ph])
         self.loadFailed.emit(self.index_of(n), err)
+
+    def insert_child(self, index, node, row=0):
+        """ Add ``node`` under the node at ``index``; returns its index.
+        For nodes that exist only in the view until something is written
+        (Jive's "Add attribute", "Create free property"). The parent's children
+        must be loaded (use :meth:`ensure_loaded`): a later load replaces them. """
+        parent = self.node(index)
+        if not parent.loaded:
+            raise RuntimeError("insert_child: the children of {0} are not loaded".format(parent.label))
+        row = max(0, min(row, len(parent.children)))
+        self.beginInsertRows(index, row, row)
+        node.parent = parent
+        parent.children.insert(row, node)
+        self.endInsertRows()
+        return self.index_of(node)
+
+    def node_changed(self, node):
+        """ Repaint ``node`` (its icon, text or tooltip changed) """
+        idx = self.index_of(node)
+        if idx.isValid():
+            self.dataChanged.emit(idx, idx)
 
     def refresh(self, index=QtCore.QModelIndex()):
         """ Forget the children of ``index`` and load them again """
@@ -223,14 +262,16 @@ class LazyTreeModel(QtCore.QAbstractItemModel):
             callback(index)
             return
 
-        def on_loaded(idx):
+        def on_loaded(idx, *_):
             if self.node(idx) is n:
-                try:
-                    self.nodeLoaded.disconnect(on_loaded)
-                except (TypeError, RuntimeError):
-                    pass
+                for sig in (self.nodeLoaded, self.loadFailed):
+                    try:
+                        sig.disconnect(on_loaded)
+                    except (TypeError, RuntimeError):
+                        pass
                 callback(idx)
         self.nodeLoaded.connect(on_loaded)
+        self.loadFailed.connect(on_loaded)     # a failed load ends the wait too
         self.fetchMore(index)
 
     def find_path(self, labels, callback, case_sensitive=False):

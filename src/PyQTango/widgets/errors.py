@@ -105,6 +105,9 @@ class QErrorHistory(QtWidgets.QWidget):
         path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save errors", "errors.txt")
         if not path:
             return
-        with open(path, "w") as f:
-            for rec in reversed(self.model.records()):
-                f.write(rec.text() + "\n\n")
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                for rec in reversed(self.model.records()):
+                    f.write(rec.text() + "\n\n")
+        except OSError as e:
+            QtWidgets.QMessageBox.critical(self, "Save errors", str(e))

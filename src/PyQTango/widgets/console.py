@@ -3,7 +3,7 @@
 QConsole: append-only monospace log (Jive's Test Device console).
 """
 
-from ..qt import QtGui, QtWidgets, Signal
+from ..qt import QtGui, QtWidgets, Signal, fixed_font
 
 
 class QConsole(QtWidgets.QWidget):
@@ -22,7 +22,7 @@ class QConsole(QtWidgets.QWidget):
         self.text = QtWidgets.QPlainTextEdit(self)
         self.text.setReadOnly(True)
         self.text.setMaximumBlockCount(max_lines)
-        self.text.setFont(QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.SystemFont.FixedFont))
+        self.text.setFont(fixed_font())
         self.text.setLineWrapMode(QtWidgets.QPlainTextEdit.LineWrapMode.NoWrap)
         layout.addWidget(self.text)
         row = QtWidgets.QHBoxLayout()

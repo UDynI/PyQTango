@@ -118,6 +118,71 @@ class PQTDevice(Device):
     def expert_double(self):
         return 3.0
 
+    @attribute(dtype=((float,),), max_dim_x=8, max_dim_y=8)
+    def image(self):
+        return [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
+
+    @attribute(dtype=(str,), max_dim_x=8)
+    def str_spectrum(self):
+        return ["alpha", "beta"]
+
+    @attribute(dtype=(DevState,), max_dim_x=8)
+    def state_spectrum(self):
+        return [DevState.ON, DevState.FAULT, DevState.ALARM]
+
+    @attribute(dtype=(bool,), max_dim_x=8)
+    def bool_spectrum(self):
+        return [True, False, True]
+
+    @attribute(dtype=((str,),), max_dim_x=4, max_dim_y=4)
+    def str_image(self):
+        return [["a", "b"], ["c", "d"]]
+
+    @attribute(dtype=tango.DevEncoded)
+    def gray8(self):
+        enc = tango.EncodedAttribute()
+        import numpy as np
+        enc.encode_gray8(np.array([[0, 64, 128], [192, 255, 10]], dtype=np.uint8))
+        return enc
+
+    @attribute(dtype=(float,), max_dim_x=10, access=AttrWriteType.READ_WRITE)
+    def rw_spectrum(self):
+        return getattr(self, "_rw_spectrum", [0.5, 1.5])
+
+    @rw_spectrum.write
+    def rw_spectrum(self, v):
+        self._rw_spectrum = list(v)
+
+    @attribute(dtype=int, access=AttrWriteType.READ_WRITE)
+    def counter(self):
+        return getattr(self, "_counter", 0)
+
+    @counter.write
+    def counter(self, v):
+        self._counter = v
+
+    @attribute(dtype=float)
+    def tab_a(self):
+        return 1.0
+
+    @attribute(dtype=float)
+    def tab_b(self):
+        return 2.0
+
+    @attribute(dtype=float)
+    def slow(self):
+        import time
+        time.sleep(0.6)
+        return 1.0
+
+    @command(display_level=DispLevel.EXPERT)
+    def ExpertCmd(self):
+        pass
+
+    @command(dtype_out=(float,))
+    def Values(self):
+        return [1.0, 2.5]
+
     @command
     def Push(self):
         self._ev += 1.0
@@ -159,10 +224,10 @@ def no_tango_in_gui_thread(monkeypatch):
     from PyQTango.core import proxies
     original = proxies.ProxyCache.get
 
-    def guarded(self, name, timeout_ms=None):
+    def guarded(self, name, timeout_ms=None, **kw):
         assert threading.current_thread() is not threading.main_thread(), \
             "Tango proxy requested from the GUI thread: " + name
-        return original(self, name, timeout_ms)
+        return original(self, name, timeout_ms, **kw)
 
     monkeypatch.setattr(proxies.ProxyCache, "get", guarded)
     yield
@@ -188,3 +253,36 @@ def value_of(name):
     from PyQTango.models import attribute_model
     v = attribute_model(name).last_value()
     return None if v is None else v.value
+
+
+@pytest.fixture(autouse=True)
+def _no_modal_change_confirmation(monkeypatch):
+    """ The multiple change confirmation is modal: tests proceed unless they replace the hook """
+    from PyQTango.widgets import confirm
+    asked = []
+    monkeypatch.setattr(confirm, "confirm_changes", lambda *a, **k: asked.append(a) or True)
+    yield asked
+
+# -- Proxies created by tests are never destroyed (PyTango #302) --------------------------------------
+# Destroying a DeviceProxy while failing stateless subscriptions exist can deadlock the process
+# (the destroying thread holds the GIL and waits for an event-consumer lock that a keep-alive thread
+# holds while it waits for the GIL). PyQTango never destroys its proxies; the tests' own throwaway
+# proxies are kept alive the same way.
+def _keep_test_proxies():
+    import tango as _tango
+    from PyQTango.core.proxies import keep_alive
+    if getattr(_tango.DeviceProxy, "_kept_by_tests", False):
+        return
+    base = _tango.DeviceProxy
+
+    class DeviceProxy(base):
+        _kept_by_tests = True
+
+        def __init__(self, *args, **kwargs):
+            base.__init__(self, *args, **kwargs)
+            keep_alive(self)
+    DeviceProxy.__name__ = DeviceProxy.__qualname__ = "DeviceProxy"
+    _tango.DeviceProxy = DeviceProxy
+
+
+_keep_test_proxies()

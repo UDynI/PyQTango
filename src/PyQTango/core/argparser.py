@@ -14,9 +14,6 @@ Syntax (same as Jive's Test Device panel):
 * images: ``[1,2,3][4,5,6]`` (rows of equal length)
 * DevVarLongStringArray / DevVarDoubleStringArray: ``[1,2][a,"b c"]``
 * DevEncoded: ``"format",[1,2,3]`` or ``"format","text"``
-* pipes: ``Blob,[name,type,v1,v2],[name,[Inner,[n,type,v]]]`` with type codes
-  ``B D F UC S US L UL LL ULL ST STR`` (only useful with PyTango versions that
-  still support pipes; PyTango 10.3 removed them)
 * ``file:/path`` reads the text from a file
 """
 
@@ -55,18 +52,6 @@ _ARRAY_KIND = {
     T.DevVarUShortArray: "ushort", T.DevVarLongArray: "long", T.DevVarULongArray: "ulong",
     T.DevVarLong64Array: "long64", T.DevVarULong64Array: "ulong64", T.DevVarFloatArray: "float",
     T.DevVarDoubleArray: "double", T.DevVarStringArray: "string", T.DevVarStateArray: "state",
-}
-
-_PIPE_TYPES = {
-    "B": "bool", "D": "double", "F": "float", "UC": "uchar", "S": "short", "US": "ushort",
-    "L": "long", "UL": "ulong", "LL": "long64", "ULL": "ulong64", "ST": "state", "STR": "string",
-}
-
-_PIPE_DTYPES = {
-    "bool": T.DevVarBooleanArray, "double": T.DevVarDoubleArray, "float": T.DevVarFloatArray,
-    "uchar": T.DevVarCharArray, "short": T.DevVarShortArray, "ushort": T.DevVarUShortArray,
-    "long": T.DevVarLongArray, "ulong": T.DevVarULongArray, "long64": T.DevVarLong64Array,
-    "ulong64": T.DevVarULong64Array, "state": T.DevVarStateArray, "string": T.DevVarStringArray,
 }
 
 _EXAMPLES = {
@@ -113,7 +98,8 @@ class ArgParser(object):
             raise ArgParserError("Empty argument, you must specify a value")
         if text.startswith("file:/"):
             try:
-                with open(text[6:], "r") as f:
+                # "file:/home/op/x.txt" reads /home/op/x.txt
+                with open(text[len("file:"):], "r") as f:
                     text = f.read()
             except OSError as e:
                 raise ArgParserError(str(e))
@@ -361,44 +347,6 @@ class ArgParser(object):
             data = (tok.text if tok else "").encode()
         self._ensure_end()
         return (fmt.text, data)
-
-    def pipe(self):
-        """ ``Blob,[name,type,v...],[name,[Inner,...]]`` -> (blob_name, [items]) """
-        blob = self._parse_blob()
-        self._ensure_end()
-        return blob
-
-    def _parse_blob(self):
-        name = self._read_word()
-        if name is None:
-            raise ArgParserError("Blob name expected")
-        items = []
-        while self._peek() == ",":
-            self._expect(",")
-            self._expect("[")
-            item_name = self._read_word()
-            self._expect(",")
-            if self._peek() == "[":
-                self._expect("[")
-                inner = self._parse_blob()
-                self._expect("]")
-                items.append({"name": item_name.text, "value": inner})
-            else:
-                type_tok = self._read_word()
-                code = type_tok.text.upper() if type_tok else ""
-                if code not in _PIPE_TYPES:
-                    raise ArgParserError("Unknown pipe type '{0}' ({1})".format(code, " ".join(_PIPE_TYPES)))
-                toks = []
-                while self._peek() == ",":
-                    self._expect(",")
-                    toks.append(self._read_word())
-                if not toks:
-                    raise ArgParserError("Typed value expected: type,value")
-                kind = _PIPE_TYPES[code]
-                items.append({"name": item_name.text, "dtype": _PIPE_DTYPES[kind],
-                              "value": self._convert_list(toks, kind)})
-            self._expect("]")
-        return (name.text, items)
 
     # -- Hex / decimal conversion (property panel) --------------------------
     def convert_to_hex(self):

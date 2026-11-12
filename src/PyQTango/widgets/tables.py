@@ -7,6 +7,9 @@ Tango property values are string arrays; the table shows one item per line.
 
 from ..qt import QtCore, QtGui, QtWidgets, Qt, Signal
 
+#: Background of values edited but not applied (same as the configuration tables)
+MODIFIED_BACKGROUND = "#fff1b8"
+
 
 class QMultiLineDelegate(QtWidgets.QStyledItemDelegate):
     """ Edits a cell in a QPlainTextEdit. Enter adds a line, Ctrl+Enter commits,
@@ -46,10 +49,11 @@ class QMultiLineDelegate(QtWidgets.QStyledItemDelegate):
 
 
 class PropertyTableModel(QtCore.QAbstractTableModel):
-    """ Name / value rows with per-row "modified" tracking.
+    """ Name / value rows; a row is modified while its value differs from the loaded one.
 
     ``set_properties([(name, value_or_list), ...])`` loads rows (lists are joined
-    with new lines); ``changed()`` returns the edited rows as ``{name: [lines]}``.
+    with new lines); ``changed()`` returns the modified rows as ``{name: [lines]}``.
+    Modified values are bold on a tinted background, with the stored value as tooltip.
     """
 
     modifiedChanged = Signal(bool)
@@ -59,15 +63,19 @@ class PropertyTableModel(QtCore.QAbstractTableModel):
         self.headers = list(headers)
         self.names_editable = names_editable
         self.read_only = False
-        self._rows = []        # [name, value_text, modified]
+        #: Optional ``callable(name) -> bool``: rows whose value can be edited
+        self.row_editable = None
+        self._rows = []        # [name, value_text, stored_text]
+
+    @staticmethod
+    def _text(value):
+        if isinstance(value, (list, tuple)):
+            return "\n".join(str(v) for v in value)
+        return str(value)
 
     def set_properties(self, props):
         self.beginResetModel()
-        self._rows = []
-        for name, value in props:
-            if isinstance(value, (list, tuple)):
-                value = "\n".join(str(v) for v in value)
-            self._rows.append([name, str(value), False])
+        self._rows = [[name, self._text(value), self._text(value)] for name, value in props]
         self.endResetModel()
         self.modifiedChanged.emit(False)
 
@@ -75,14 +83,26 @@ class PropertyTableModel(QtCore.QAbstractTableModel):
         return [(r[0], r[1].split("\n")) for r in self._rows]
 
     def changed(self):
-        return {r[0]: r[1].split("\n") for r in self._rows if r[2]}
+        return {r[0]: r[1].split("\n") for r in self._rows if r[1] != r[2]}
 
     def is_modified(self):
-        return any(r[2] for r in self._rows)
+        return any(r[1] != r[2] for r in self._rows)
+
+    def is_row_modified(self, row):
+        return self._rows[row][1] != self._rows[row][2]
 
     def mark_clean(self):
+        """ The current values are now the stored ones (after a write) """
         for r in self._rows:
-            r[2] = False
+            r[2] = r[1]
+        if self._rows:
+            self.dataChanged.emit(self.index(0, 0), self.index(len(self._rows) - 1, 1))
+        self.modifiedChanged.emit(False)
+
+    def revert(self):
+        """ Drop the edits not applied yet """
+        for r in self._rows:
+            r[1] = r[2]
         if self._rows:
             self.dataChanged.emit(self.index(0, 0), self.index(len(self._rows) - 1, 1))
         self.modifiedChanged.emit(False)
@@ -90,8 +110,34 @@ class PropertyTableModel(QtCore.QAbstractTableModel):
     def name(self, row):
         return self._rows[row][0]
 
+    def names(self):
+        return [r[0] for r in self._rows]
+
     def value(self, row):
         return self._rows[row][1]
+
+    def stored(self, row):
+        return self._rows[row][2]
+
+    def row_of(self, name, case_sensitive=True):
+        key = name if case_sensitive else name.lower()
+        for i, r in enumerate(self._rows):
+            if (r[0] if case_sensitive else r[0].lower()) == key:
+                return i
+        return -1
+
+    def set_value(self, row, value):
+        """ Change a value (pending until written); True when it changed """
+        value = self._text(value)
+        r = self._rows[row]
+        if r[1] == value:
+            return False
+        was = self.is_modified()
+        r[1] = value
+        self.dataChanged.emit(self.index(row, 0), self.index(row, 1))
+        if was != self.is_modified() or self.is_modified():
+            self.modifiedChanged.emit(self.is_modified())
+        return True
 
     def rowCount(self, parent=QtCore.QModelIndex()):
         return 0 if parent.isValid() else len(self._rows)
@@ -104,9 +150,16 @@ class PropertyTableModel(QtCore.QAbstractTableModel):
             return self.headers[section]
         return None
 
+    def _can_edit(self, index):
+        if self.read_only or not index.isValid():
+            return False
+        if index.column() == 0:
+            return self.names_editable
+        return self.row_editable is None or bool(self.row_editable(self._rows[index.row()][0]))
+
     def flags(self, index):
         f = Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
-        if not self.read_only and (index.column() == 1 or self.names_editable):
+        if self._can_edit(index):
             f |= Qt.ItemFlag.ItemIsEditable
         return f
 
@@ -116,25 +169,29 @@ class PropertyTableModel(QtCore.QAbstractTableModel):
         row = self._rows[index.row()]
         if role in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole):
             return row[index.column()]
-        if role == Qt.ItemDataRole.ForegroundRole and row[2]:
-            return QtGui.QBrush(QtGui.QColor("darkgreen"))
-        if role == Qt.ItemDataRole.FontRole and row[2]:
-            f = QtGui.QFont()
-            f.setBold(True)
-            return f
+        if row[1] != row[2] and index.column() == 1:
+            if role == Qt.ItemDataRole.FontRole:
+                f = QtGui.QFont()
+                f.setBold(True)
+                return f
+            if role == Qt.ItemDataRole.BackgroundRole:
+                return QtGui.QBrush(QtGui.QColor(MODIFIED_BACKGROUND))
+            if role == Qt.ItemDataRole.ForegroundRole:
+                return QtGui.QBrush(QtGui.QColor("#000000"))
+            if role == Qt.ItemDataRole.ToolTipRole:
+                return "Not applied yet. Stored value:\n" + (row[2] or "(empty)")
         return None
 
     def setData(self, index, value, role=Qt.ItemDataRole.EditRole):
-        if role != Qt.ItemDataRole.EditRole or not index.isValid():
+        if role != Qt.ItemDataRole.EditRole or not self._can_edit(index):
             return False
+        if index.column() == 1:
+            return self.set_value(index.row(), str(value))
         row = self._rows[index.row()]
-        col = index.column()
-        if row[col] == value:
+        if row[0] == value:
             return False
-        row[col] = value
-        row[2] = True
+        row[0] = value
         self.dataChanged.emit(self.index(index.row(), 0), self.index(index.row(), 1))
-        self.modifiedChanged.emit(True)
         return True
 
 
@@ -153,6 +210,13 @@ class QPropertyTable(QtWidgets.QTableView):
                              QtWidgets.QAbstractItemView.EditTrigger.EditKeyPressed)
         self.model().modelReset.connect(self.resizeRowsToContents)
         self.model().dataChanged.connect(lambda *a: self.resizeRowsToContents())
+        # Row heights follow the column widths: a name that wrapped while its column was
+        # narrow (before resizeColumnToContents, or while the user drags) must shrink back
+        self._row_timer = QtCore.QTimer(self)
+        self._row_timer.setSingleShot(True)
+        self._row_timer.setInterval(0)
+        self._row_timer.timeout.connect(self.resizeRowsToContents)
+        self.horizontalHeader().sectionResized.connect(lambda *a: self._row_timer.start())
 
     def selected_rows(self):
         return sorted({i.row() for i in self.selectionModel().selectedRows()})

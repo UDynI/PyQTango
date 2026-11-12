@@ -37,7 +37,8 @@ QUALITY_COLORS = {
     tango.AttrQuality.ATTR_CHANGING: "#80a0ff",
 }
 
-_FMT_RE = re.compile(r"%[-+ #0]*\d*(\.\d+)?[diouxXeEfFgGs]")
+# C length modifiers (%ld, %6.3lf) are accepted: Python's % operator ignores them
+_FMT_RE = re.compile(r"%[-+ #0]*\d*(\.\d+)?[hlL]?[diouxXeEfFgGs]")
 
 _INT_TYPES = (tango.CmdArgType.DevShort, tango.CmdArgType.DevLong, tango.CmdArgType.DevLong64,
               tango.CmdArgType.DevUShort, tango.CmdArgType.DevULong, tango.CmdArgType.DevULong64,
@@ -72,7 +73,9 @@ def quality_name(quality):
 
 
 def state_colors(state):
-    """ (background, foreground) for a DevState """
+    """ (background, foreground) for a DevState, its value or its name ("ON", "FAULT") """
+    if isinstance(state, str):
+        state = getattr(tango.DevState, state.split(".")[-1].upper(), tango.DevState.UNKNOWN)
     try:
         return STATE_COLORS[tango.DevState(state)]
     except Exception:
@@ -101,7 +104,10 @@ def format_scalar(value, fmt="", data_type=None, enum_labels=None, unit=""):
         text = state_name(value)
     elif data_type == tango.CmdArgType.DevEnum and enum_labels:
         try:
-            text = enum_labels[int(value)]
+            i = int(value)
+            if not 0 <= i < len(enum_labels):
+                raise IndexError(i)     # a negative index would pick a label from the end
+            text = enum_labels[i]
         except (IndexError, ValueError, TypeError):
             text = str(value)
     elif isinstance(value, (bool, np.bool_)):
@@ -145,7 +151,7 @@ def format_digits(fmt, default=(4, 2)):
     """ (integer digits, decimals) suggested by a ``%w.pf`` / ``%wd`` format, for wheel editors """
     if not _valid_format(fmt):
         return default
-    m = re.search(r"%[-+ #0]*(\d*)(?:\.(\d+))?([diouxXeEfFgG])", fmt)
+    m = re.search(r"%[-+ #0]*(\d*)(?:\.(\d+))?[hlL]?([diouxXeEfFgG])", fmt)
     if m is None:
         return default
     width = int(m.group(1)) if m.group(1) else 0

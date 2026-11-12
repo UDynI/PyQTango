@@ -41,8 +41,16 @@ class TangoDeviceModel(QtCore.QObject):
         self._registry = registry
         self._commands = None
         self._info = None
-        self.state_model = registry.attribute(self._attr("State"))
-        self.status_model = registry.attribute(self._attr("Status"))
+
+    @property
+    def state_model(self):
+        """ Shared model of the State attribute (looked up each time, as idle models are forgotten) """
+        return self._registry.attribute(self._attr("State"))
+
+    @property
+    def status_model(self):
+        """ Shared model of the Status attribute (looked up each time, as idle models are forgotten) """
+        return self._registry.attribute(self._attr("Status"))
 
     def _attr(self, attr):
         # Insert the attribute before a "#dbase=no" fragment

@@ -5,13 +5,22 @@
 
 import logging
 
-from .qt import QtCore, QtGui, QtWidgets
+from ..qt import QtCore, QtGui, QtWidgets, Signal
 
-from .CommonTree import TreeItem, DeviceItem, AttributeItem
+from .treeitems import TreeItem, DeviceItem, AttributeItem
 import tango as PT
-from .DeviceTree import DeviceTreeModel
-from .TangoUtil import getAllLiveAttributes
-from .config import get_image_path
+from .devicetree import DeviceTreeModel
+from ..core.tangoutil import getAllLiveAttributes
+from .icons import get_image_path
+from ..models.worker import run_async
+
+
+def _name_parts(name):
+    """ "tango://host:port/a/b/c/d#dbase=no" -> ["a", "b", "c", "d"] (labels of the tree levels) """
+    path = name.split("#", 1)[0]
+    if "://" in path:
+        path = path.split("://", 1)[1].split("/", 1)[-1]
+    return path.split("/")
 
 log = logging.getLogger(__name__)
 
@@ -25,8 +34,12 @@ class AttributeTreeModel(DeviceTreeModel):
 
         attr_dict = {}
         for d in attr_list:
-            # Split device names
-            (sys, sub, dev, attr) = d['attribute'].split("/")
+            # Split device names (the full name stays in d)
+            parts = _name_parts(d['attribute'])
+            if len(parts) != 4 or not all(parts):
+                log.warning("Skipping invalid attribute name %s", d['attribute'])
+                continue
+            (sys, sub, dev, attr) = parts
 
             if sys in attr_dict:
                 if sub in attr_dict[sys]:
@@ -161,56 +174,32 @@ QTreeView::branch:open:has-children:has-siblings  {{
 
 class QAttributeTree(QBaseAttributeTree):
 
-    def __init__(self, dbhost=None, port=10000, resize=False, label="", parent=None):
-        """ Constructor
+    #: The attribute list is shown (``load_async=True``)
+    loaded = Signal()
+
+    def __init__(self, dbhost=None, port=10000, resize=False, label="", parent=None, load_async=False):
+        """ Constructor.
+
+        ``load_async``: show the tree at once, empty, and fill it from a worker
+        thread (listing the live attributes pings every device, which takes
+        seconds when some are dead); :attr:`loaded` is emitted when it is filled.
         """
-        # Get attribute list)
-        attr_list = getAllLiveAttributes()
-
-        # Common parent constructor
-        QBaseAttributeTree.__init__(self, attr_list, resize=resize, label=label, parent=parent)
-
-
-class QArchivedAttributeTree(QBaseAttributeTree):
-
-    def __init__(self, extractor, resize=False, label="", parent=None):
-        """ Constructor
-        """
+        if load_async:
+            QBaseAttributeTree.__init__(self, [], resize=resize, label=label, parent=parent)
+            self._label = label
+            run_async(getAllLiveAttributes, dbhost, port, on_done=self._set_attributes,
+                      on_error=lambda e: log.warning("Cannot list the attributes: %s", e.message),
+                      source="Attribute tree", owner=self)
+            return
         # Get attribute list
-        attrs = extractor.GetAttNameAll()
-        attr_list = []
-
-        if parent is not None:
-            app = QtWidgets.QApplication.instance()
-            progress = QtWidgets.QProgressDialog(parent)
-            progress.setLabelText("Scanning attributes for configuration...")
-            progress.setMinimum(0)
-            progress.setMaximum(len(attrs))
-            progress.setWindowModality(QtCore.Qt.WindowModality.WindowModal)
-            progress.setAutoClose(True)
-            progress.setValue(0)
-            progress.show()
-            app.processEvents()
-
-        for i, a in enumerate(attrs):
-            if parent is not None:
-                progress.setValue(i)
-                app.processEvents()
-
-            try:
-                if parent is not None and progress.wasCanceled():
-                    log.debug("Attribute scanning canceled")
-                    break
-                ap = PT.AttributeProxy(a)
-                conf = ap.get_config()
-                attr_list.append({'attribute': a, 'data_format': conf.data_format, 'data_type': conf.data_type})
-                log.debug("configured attribute %s", a)
-            except PT.DevFailed:
-                attr_list.append({'attribute': a})
-
-        log.debug("Attribute scanning done")
-        if parent is not None:
-            progress.close()
+        attr_list = getAllLiveAttributes(dbhost, port)
 
         # Common parent constructor
         QBaseAttributeTree.__init__(self, attr_list, resize=resize, label=label, parent=parent)
+
+    def _set_attributes(self, attr_list):
+        old = self.model
+        self.model = AttributeTreeModel(attr_list, label=self._label, parent=self)
+        self.setModel(self.model)
+        old.deleteLater()
+        self.loaded.emit()

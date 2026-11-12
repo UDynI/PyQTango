@@ -13,7 +13,7 @@ the receiver (normally the GUI thread).
 import logging
 import threading
 
-from ..qt import QtCore, Signal
+from ..qt import QtCore, Signal, is_deleted
 from ..core.errors import error_from_exception
 
 log = logging.getLogger(__name__)
@@ -95,15 +95,27 @@ class _Runnable(QtCore.QRunnable):
             _drop(task)
 
 
-def run_async(fn, *args, on_done=None, on_error=None, source="", **kwargs):
+def _guard(owner, fn):
+    def call(value):
+        if not is_deleted(owner):
+            fn(value)
+    return call
+
+
+def run_async(fn, *args, on_done=None, on_error=None, source="", owner=None, **kwargs):
     """ Run ``fn(*args, **kwargs)`` in the PyQTango thread pool.
 
     ``on_done(result)`` and ``on_error(ErrorRecord)`` are called in the thread
-    that called ``run_async`` (connections are queued). Returns the :class:`Task`;
+    that called ``run_async`` (connections are queued); with ``owner`` (a QObject)
+    they are dropped once that object is deleted. Returns the :class:`Task`;
     in a thread with an event loop the call starts on the next loop turn, so
     connecting to the task's signals right after ``run_async`` returns is safe.
     """
     task = Task(source)
+    if owner is not None:
+        # Drop results that arrive after the owning widget was deleted
+        on_done = _guard(owner, on_done) if on_done is not None else None
+        on_error = _guard(owner, on_error) if on_error is not None else None
     if on_done is not None:
         task.done.connect(on_done)
     if on_error is not None:

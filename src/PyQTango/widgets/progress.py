@@ -4,7 +4,7 @@ QJobProgressDialog: progress and cancel for a :class:`PyQTango.models.Job`
 (replaces Jive's ProgressFrame and ThreadDlg).
 """
 
-from ..qt import QtWidgets, Qt
+from ..qt import QtWidgets, Qt, is_deleted
 from .errors import QErrorDialog
 
 
@@ -43,6 +43,8 @@ class QJobProgressDialog(QtWidgets.QProgressDialog):
         self.fatal = None
 
     def _on_progress(self, percent, text):
+        if is_deleted(self):            # its window was closed while the job ran
+            return
         self.setValue(max(0, min(100, percent)))
         if text:
             self.setLabelText(text)
@@ -51,8 +53,16 @@ class QJobProgressDialog(QtWidgets.QProgressDialog):
         self.fatal = err
 
     def _on_finished(self):
+        if is_deleted(self):
+            return
         self.setValue(100)
         self.close()
+        try:
+            self._show_errors()
+        finally:
+            self.deleteLater()      # one dialog per job: do not pile them up under the parent
+
+    def _show_errors(self):
         if not self.show_errors:
             return
         if self.fatal is not None:

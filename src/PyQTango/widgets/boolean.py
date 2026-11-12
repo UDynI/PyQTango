@@ -176,7 +176,21 @@ class QBooleanLabel(TangoAttributeWidget, QtWidgets.QLabel):
         self.setStyleSheet("background-color: {0}; color: {1}; border: 1px solid #808080; padding: 1px 4px;".format(
             bg.name(), text_color_for(bg).name()))
         if self._hide_until_valid:
-            self.setVisible(state is not None)
+            # Hidden by itself, it must stay attached (pauseWhenHidden would detach it
+            # and no value would come to show it again)
+            self._self_hiding = state is None
+            try:
+                self.setVisible(state is not None)
+            finally:
+                self._self_hiding = False
+
+    _self_hiding = False
+
+    def hideEvent(self, event):
+        if self._self_hiding:
+            QtWidgets.QLabel.hideEvent(self, event)
+            return
+        TangoAttributeWidget.hideEvent(self, event)
 
 
 class QSwitchButton(QtWidgets.QAbstractButton):

@@ -15,15 +15,17 @@ Typical use::
 from .worker import run_async, Job, Task, thread_pool
 from .history import ErrorHistoryModel, error_history
 from .refresher import AttributeRefresher, refresher, DEFAULT_PERIOD_MS
-from .attribute import TangoAttributeModel, AttrValue, MODE_IDLE, MODE_EVENTS, MODE_POLLING
+from .attribute import (TangoAttributeModel, AttrValue, MODE_IDLE, MODE_EVENTS, MODE_POLLING,
+                        SubscriptionLimiter, subscription_limiter)
 from .device import TangoDeviceModel
 from .registry import ModelRegistry, registry, attribute_model, device_model
+from .starter import StarterModel, starter_model
 
 __all__ = [
     "run_async", "Job", "Task", "thread_pool",
     "ErrorHistoryModel", "error_history",
     "AttributeRefresher", "refresher", "DEFAULT_PERIOD_MS",
-    "TangoAttributeModel", "AttrValue", "MODE_IDLE", "MODE_EVENTS", "MODE_POLLING",
+    "TangoAttributeModel", "AttrValue", "SubscriptionLimiter", "subscription_limiter", "MODE_IDLE", "MODE_EVENTS", "MODE_POLLING",
     "TangoDeviceModel",
-    "ModelRegistry", "registry", "attribute_model", "device_model",
+    "ModelRegistry", "registry", "attribute_model", "device_model", "StarterModel", "starter_model",
 ]

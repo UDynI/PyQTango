@@ -5,12 +5,13 @@
 
 import logging
 
-from .qt import QtCore, QtGui, QtWidgets
+from ..qt import QtCore, QtGui, QtWidgets, Signal
 
-from .CommonTree import TreeItem, DeviceItem, ServerItem
+from .treeitems import TreeItem, DeviceItem, ServerItem
 import tango as PT
-from .TangoUtil import getAllRegisteredDevices
-from .config import get_image_path
+from ..core.tangoutil import getAllRegisteredDevices
+from .icons import get_image_path
+from ..models.worker import run_async
 
 log = logging.getLogger(__name__)
 
@@ -260,8 +261,31 @@ class QDeviceTree(QtWidgets.QTreeView):
     ByServer = 1
     ByClass  = 2
 
-    def __init__(self, dbhost=None, port=10000, resize=False, label="", structure=0, parent=None, dev_list=None):
-        """ Constructor
+    #: The device list is shown (``load_async=True``)
+    loaded = Signal()
+
+    def _make_model(self, dev_list):
+        if self._structure == self.ByServer:
+            return DeviceByServerTreeModel(dev_list, label=self._label, parent=self)
+        if self._structure == self.ByClass:
+            return DeviceByClassTreeModel(dev_list, label=self._label, parent=self)
+        return DeviceTreeModel(dev_list, label=self._label, parent=self)
+
+    def _set_devices(self, result):
+        self.db, dev_list = result
+        old = self.model
+        self.model = self._make_model(dev_list)
+        self.setModel(self.model)
+        old.deleteLater()
+        self.loaded.emit()
+
+    def __init__(self, dbhost=None, port=10000, resize=False, label="", structure=0, parent=None, dev_list=None,
+                 load_async=False):
+        """ Constructor.
+
+        ``load_async``: without ``dev_list``, show the tree at once, empty, and
+        read the database from a worker thread; :attr:`loaded` is emitted when
+        it is filled.
         """
         # Parent constructor
         QtWidgets.QTreeView.__init__(self, parent)
@@ -270,19 +294,23 @@ class QDeviceTree(QtWidgets.QTreeView):
         if resize and parent is not None:
             self.resize(parent.size())
 
+        self._label, self._structure = label, structure
         # Connect to Tango database (only needed when no device list is given)
         self.db = None
-        if dev_list is None:
+        if dev_list is None and load_async:
+            def load():
+                db = PT.Database(dbhost, port) if dbhost is not None else PT.Database()
+                return db, getAllRegisteredDevices(dbhost, port)
+            run_async(load, on_done=self._set_devices,
+                      on_error=lambda e: log.warning("Cannot read the database: %s", e.message),
+                      source="Device tree", owner=self)
+            dev_list = []
+        elif dev_list is None:
             self.db = PT.Database(dbhost, port) if dbhost is not None else PT.Database()
             dev_list = getAllRegisteredDevices(dbhost, port)
 
         # Model
-        if structure == self.ByServer:
-            self.model = DeviceByServerTreeModel(dev_list, label=label, parent=self)
-        elif structure == self.ByClass:
-            self.model = DeviceByClassTreeModel(dev_list, label=label, parent=self)
-        else:
-            self.model = DeviceTreeModel(dev_list, label=label, parent=self)
+        self.model = self._make_model(dev_list)
         self.setUniformRowHeights(True)
         self.setAlternatingRowColors(True)
 

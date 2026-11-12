@@ -3,6 +3,7 @@
 ModelRegistry: hands out one shared model per attribute or device name.
 """
 
+from ..qt import QtCore
 from ..core.names import normalize_name
 from .attribute import TangoAttributeModel
 from .device import TangoDeviceModel
@@ -21,8 +22,13 @@ class ModelRegistry(object):
         if model is None:
             model = TangoAttributeModel(name)
             model.on_released = self._forget_attribute
+            model.on_revive = self._revive_attribute
             self._attributes[key] = model
         return model
+
+    def lookup(self, name):
+        """ The shared model of ``name`` if there is one (never creates it) """
+        return self._attributes.get(normalize_name(name))
 
     def device(self, name):
         key = normalize_name(name)
@@ -39,6 +45,15 @@ class ModelRegistry(object):
         key = normalize_name(model.name)
         if self._attributes.get(key) is model and model.ref_count() == 0:
             del self._attributes[key]
+            # Called from the model's own release timer: keep it alive until the next event-loop turn
+            QtCore.QTimer.singleShot(0, lambda m=model: None)
+
+    def _revive_attribute(self, model):
+        # A user attached a model the registry had forgotten (e.g. a widget paused while
+        # hidden): share it again, unless another model took the name meanwhile
+        key = normalize_name(model.name)
+        if key not in self._attributes:
+            self._attributes[key] = model
 
     def shutdown(self):
         """ Unsubscribe everything (call before the application exits) """

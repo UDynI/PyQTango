@@ -4,7 +4,7 @@ Text editors: QCodeEditor with line numbers and search (Jive's JTextEditor and
 PropertyEditorDlg) and QCompleterLineEdit (Jive's JTextTips).
 """
 
-from ..qt import QtCore, QtGui, QtWidgets, Qt, Signal
+from ..qt import QtCore, QtGui, QtWidgets, Qt, Signal, fixed_font
 
 
 class _LineNumberArea(QtWidgets.QWidget):
@@ -25,7 +25,7 @@ class QCodeEditor(QtWidgets.QPlainTextEdit):
 
     def __init__(self, parent=None):
         QtWidgets.QPlainTextEdit.__init__(self, parent)
-        self.setFont(QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.SystemFont.FixedFont))
+        self.setFont(fixed_font())
         self.setLineWrapMode(QtWidgets.QPlainTextEdit.LineWrapMode.NoWrap)
         self._gutter = _LineNumberArea(self)
         self.blockCountChanged.connect(self._update_margin)

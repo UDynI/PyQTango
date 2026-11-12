@@ -13,7 +13,7 @@ long_description = (here / 'README.md').read_text(encoding='utf-8')
 
 setup(
     name='PyQTango',
-    version='0.2.1',
+    version='0.3.0',
     description='A library of event-aware Tango widgets for PyQt5 and PyQt6',
 
     # Long description from README.md
@@ -63,6 +63,7 @@ setup(
     install_requires=['pyqt5>=5.15', 'pytango>=9.5', 'numpy'],
     extras_require={
         'pyqt6': ['pyqt6>=6.4'],
+        'plot': ['pyqtgraph>=0.13'],     # PyQTango.widgets.plot (QTangoChart, QImageViewer)
         'test': ['pytest', 'pytest-qt'],
     },
 

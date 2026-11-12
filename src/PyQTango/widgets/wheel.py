@@ -174,6 +174,11 @@ class QWheelEditor(QtWidgets.QWidget):
         self._units = units if external else self._clamp(units)
         if external:
             self._ref_units = self._units
+            # Widen rather than hide leading digits: a click would then write a clamped value
+            need = len(str(abs(units) // 10 ** self._decimals))
+            if need > self._int_digits:
+                self._int_digits = need
+                self.updateGeometry()
         self.update()
 
     def _user_change(self, units):
@@ -370,6 +375,11 @@ class QAttributeWheelEditor(TangoAttributeWidget, QWheelEditor):
     setPointMode = "auto"
 
     def on_value(self, value):
+        if self.write_pending():
+            return      # a value read between the user's writes would undo the clicks after it
+        self._show(value)
+
+    def _show(self, value):
         shown = self.set_point(value, self.setPointMode)
         try:
             self.setValue(float(shown))
@@ -379,16 +389,25 @@ class QAttributeWheelEditor(TangoAttributeWidget, QWheelEditor):
     def on_error(self, err):
         self.setToolTip(self.tooltip_text())
 
+    def on_model_cleared(self):
+        """ Unbound: nothing to write to """
+        self.setEnabled(False)
+        self._tnext = None
+        self._pending = False
+        self._set_units(0, external=True)
+        self.setToolTip("")
+
     def on_write_done(self, err):
-        if err is not None:
+        if err is not None and self.writing():
             self.setToolTip(self.tooltip_text() + "<br/><font color='red'>Write failed: {0}</font>".format(err.message))
+            self._on_reverted()     # show the device value again, as the other setters do
 
     def _write_value(self, value):
         cfg = self.attributeConfig()
         if cfg is not None and is_int_type(cfg.data_type):
             value = int(round(value))
-        self.write(value)
+        self.write_latest(value)    # one write at a time, in order
 
     def _on_reverted(self):
         if self.attributeValue() is not None:
-            self.on_value(self.attributeValue())
+            self._show(self.attributeValue())

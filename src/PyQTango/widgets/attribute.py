@@ -20,15 +20,17 @@ import logging
 
 import tango as PT
 
-from .qt import QtCore, QtGui, QtWidgets, Signal, Slot, Property
-from .config import get_image_path
-from .core.formatting import format_scalar, format_value, is_float_type, is_int_type, is_numeric_type
-from .widgets.base import TangoAttributeWidget
-from .widgets.colors import state_style
+from ..qt import QtCore, QtGui, QtWidgets, Signal, Slot, Property
+from .icons import get_image_path
+from ..core.formatting import format_scalar, format_value, is_float_type, is_int_type, is_numeric_type
+from .base import TangoAttributeWidget
+from .colors import state_style
 
 log = logging.getLogger(__name__)
 
 _WRITABLE = (PT.AttrWriteType.READ_WRITE, PT.AttrWriteType.READ_WITH_WRITE, PT.AttrWriteType.WRITE)
+# QSpinBox holds a C int: wider integer ranges get a line edit
+_INT_MIN, _INT_MAX = -2 ** 31, 2 ** 31 - 1
 
 
 def _limit(text, data_type):
@@ -96,7 +98,14 @@ class QAttribute(TangoAttributeWidget, QtWidgets.QWidget):
             self.__shape = shape
             self.setupWidget()
         else:
-            self.__apply_limits()
+            # New limits can clamp the shown value: that is not a user edit
+            if self.w_value is not None:
+                self.w_value.blockSignals(True)
+            try:
+                self.__apply_limits()
+            finally:
+                if self.w_value is not None:
+                    self.w_value.blockSignals(False)
         self.setToolTip(self.tooltip_text())
 
     def on_error(self, err):
@@ -125,6 +134,12 @@ class QAttribute(TangoAttributeWidget, QtWidgets.QWidget):
             shown = value.w_value if value.w_value is not None else value.value
 
         w = self.w_value
+        if shown is None:
+            # INVALID quality: no value to show
+            w.setStyleSheet("color: gray;")
+            if value.raw is not None:
+                self.updated.emit(value.raw)
+            return
         w.blockSignals(True)
         try:
             if isinstance(w, QtWidgets.QLineEdit):
@@ -194,7 +209,8 @@ class QAttribute(TangoAttributeWidget, QtWidgets.QWidget):
             minimum = _limit(cfg.min_value, dtype)
             maximum = _limit(cfg.max_value, dtype)
             if is_numeric_type(dtype):
-                if minimum is not None and maximum is not None:
+                if minimum is not None and maximum is not None and (
+                        is_float_type(dtype) or _INT_MIN <= minimum and maximum <= _INT_MAX):
                     if is_float_type(dtype):
                         self.w_value = QtWidgets.QDoubleSpinBox(self)
                     else:
@@ -285,16 +301,18 @@ class QAttribute(TangoAttributeWidget, QtWidgets.QWidget):
         cfg = self.__cfg
         dtype = cfg.data_type
         unit = cfg.unit if cfg.unit not in ("", "No unit", "Not specified") else ""
-        if unit:
-            text = text.replace(unit, "")
         text = text.strip()
+        if unit and text.endswith(unit):
+            text = text[:-len(unit)].strip()    # only a trailing unit ("1e-3 e" keeps its exponent)
         if dtype == PT.CmdArgType.DevString:
             return text
         try:
             if is_float_type(dtype):
                 return float(text)
             if is_int_type(dtype):
-                return int(text, 0)
+                # Explicit hex, else decimal: int(text, 0) refuses "010"
+                hexa = text.lower().lstrip("+-").startswith("0x")
+                return int(text, 16 if hexa else 10)
         except ValueError:
             return None
         return None

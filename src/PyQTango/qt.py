@@ -35,7 +35,7 @@ __all__ = [
     "API", "QT_VERSION", "PYQT_VERSION", "QtCore", "QtGui", "QtWidgets", "Qt",
     "Signal", "Slot", "Property", "QAction", "QActionGroup", "QShortcut",
     "enum_value", "event_pos", "event_global_pos", "no_window_flags",
-    "make_application", "load_ui", "is_qt6",
+    "make_application", "load_ui", "is_qt6", "is_deleted", "sip", "fixed_font",
 ]
 
 _SUPPORTED = ("PyQt5", "PyQt6")
@@ -73,6 +73,17 @@ Qt = QtCore.Qt
 Signal = QtCore.pyqtSignal
 Slot = QtCore.pyqtSlot
 Property = QtCore.pyqtProperty
+
+sip = importlib.import_module(API + ".sip")
+
+
+def is_deleted(obj):
+    """ True when the C++ side of a Qt object is gone (a late callback must drop it) """
+    try:
+        return sip.isdeleted(obj)
+    except TypeError:
+        return False
+
 
 QT_VERSION = QtCore.QT_VERSION_STR
 PYQT_VERSION = QtCore.PYQT_VERSION_STR
@@ -125,19 +136,50 @@ def no_window_flags():
     return Qt.WindowType.Widget
 
 
-def make_application(argv=None):
+def fixed_font():
+    """ A fixed-pitch font for consoles and aligned text.
+
+    ``QFontDatabase.systemFont(FixedFont)`` is not always fixed-pitch (the
+    offscreen platform and some minimal desktops return the UI font): fall back
+    to the font family the system matches to "monospace".
+    """
+    font = QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.SystemFont.FixedFont)
+    if QtGui.QFontInfo(font).fixedPitch():
+        return font
+    fallback = QtGui.QFont("monospace")
+    fallback.setStyleHint(QtGui.QFont.StyleHint.TypeWriter)
+    fallback.setFixedPitch(True)
+    if font.pointSizeF() > 0:
+        fallback.setPointSizeF(font.pointSizeF())
+    return fallback
+
+
+def make_application(argv=None, name=None):
     """ Return the running QApplication or create one.
 
     On Qt5 HiDPI scaling and HiDPI pixmaps are enabled before creation, as
-    they are by default on Qt6.
+    they are by default on Qt6. ``name`` sets the application name and, on
+    macOS, the name shown in the menu bar and the Dock (instead of "Python").
     """
     app = QtWidgets.QApplication.instance()
     if app is not None:
+        if name:
+            app.setApplicationName(name)
         return app
+    if name:
+        # macOS takes the menu bar's name from the bundle, before Cocoa starts
+        from .core.macos import set_app_name
+        set_app_name(name)
     if not is_qt6():
         QtWidgets.QApplication.setAttribute(Qt.ApplicationAttribute.AA_EnableHighDpiScaling, True)
         QtWidgets.QApplication.setAttribute(Qt.ApplicationAttribute.AA_UseHighDpiPixmaps, True)
-    return QtWidgets.QApplication(list(argv) if argv is not None else sys.argv)
+    app = QtWidgets.QApplication(list(argv) if argv is not None else sys.argv)
+    # PYQTANGO_STALL_MS: report the times the GUI thread is too busy to repaint
+    from .core.stalls import start_from_environment
+    app._stall_watchdog = start_from_environment(app)
+    if name:
+        app.setApplicationName(name)
+    return app
 
 
 def load_ui(path, baseinstance=None):

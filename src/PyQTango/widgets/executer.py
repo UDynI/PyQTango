@@ -18,11 +18,11 @@ import logging
 
 import tango as PT
 
-from .qt import QtGui, QtWidgets, Signal, Slot
-from .config import get_image_path
-from .core.argparser import parse_command_argin, argin_example, ArgParserError
-from .core.formatting import format_value
-from .models.registry import device_model
+from ..qt import QtGui, QtWidgets, Signal, Slot, is_deleted
+from .icons import get_image_path
+from ..core.argparser import parse_command_argin, argin_example, ArgParserError
+from ..core.formatting import format_value
+from ..models.registry import device_model
 
 log = logging.getLogger(__name__)
 
@@ -150,14 +150,17 @@ class QCommandExecuter(QtWidgets.QWidget):
         # Use this call's own task, so other widgets running commands on the
         # same device do not update this one
         task = self.__dev.execute(cmd, argin)
-        task.done.connect(lambda res, c=cmd: self.__on_done(c, res[0], res[1]))
-        task.failed.connect(lambda err, c=cmd: self.__on_failed(c, err))
+        # The widget can be deleted, or its device cleared, before the command ends
+        dev_name = self.__dev.name
+        task.done.connect(lambda res, c=cmd: None if is_deleted(self) else
+                          self.__on_done(dev_name, c, res[0], res[1]))
+        task.failed.connect(lambda err, c=cmd: None if is_deleted(self) else self.__on_failed(c, err))
 
-    def __on_done(self, cmd, result, duration_ms):
+    def __on_done(self, dev_name, cmd, result, duration_ms):
         self.execute.setDisabled(False)
         text = format_value(result) if result is not None else "Command OK"
         self.results.setPlainText("Command: {0}/{1}\nDuration: {2:d} msec\nResult: {3}".format(
-            self.__dev.name, cmd, int(duration_ms), text))
+            dev_name, cmd, int(duration_ms), text))
         self.executed.emit(cmd, result, duration_ms)
 
     def __on_failed(self, cmd, err):

@@ -5,12 +5,12 @@ Created on Tue May 12 11:13:29 2020
 @author: Michele Devetta <michele.devetta@cnr.it>
 """
 
-from .qt import QtCore, QtGui, QtWidgets, Signal, Slot, event_pos
+from ..qt import QtCore, QtGui, QtWidgets, Signal, Slot, event_pos
 
 import math
 import re
 
-from .config import get_image_path
+from .icons import get_image_path
 
 
 class QDoubleClickLabel(QtWidgets.QLabel):
@@ -376,6 +376,7 @@ class QDigitDial(QtWidgets.QWidget):
                 t = txt[i]
                 if t == "-":
                     self.wdg[0].setText("-")
+                    self.wdg[i].setValue(0)     # the digit under the sign would keep its old value
                     continue
                 v = int(txt[i])
                 self.wdg[i].setValue(v)
@@ -398,6 +399,7 @@ class QDigitDial(QtWidgets.QWidget):
                 t = txt[i]
                 if t == "-":
                     self.wdg[1].setText("-")
+                    self.wdg[i].setWriteValue(0)     # the digit under the sign would keep its old value
                     continue
                 v = int(txt[i])
                 self.wdg[i].setWriteValue(v)

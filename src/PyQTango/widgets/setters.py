@@ -67,6 +67,8 @@ class _SetterMixin(TangoAttributeWidget):
             self.on_value(self.attributeValue())
 
     def on_write_done(self, err):
+        if not self.writing():
+            return      # another widget's write on the shared model: keep this one's edit
         if err is None:
             self.setStyleSheet("")
             self.setToolTip(self.tooltip_text())
@@ -75,6 +77,23 @@ class _SetterMixin(TangoAttributeWidget):
             self.setToolTip(self.tooltip_text() + "<br/><font color='red'>Write failed: {0}</font>".format(err.message))
             self._editing = False
             self.revert()
+
+    def on_model_cleared(self):
+        """ Unbound: nothing to write to, nothing to show """
+        self.setEnabled(False)
+        self.setStyleSheet("")
+        self._tnext = None
+        self.blockSignals(True)
+        try:
+            if isinstance(self, QtWidgets.QLineEdit):
+                self._editing = False
+                self.clear()
+            elif isinstance(self, QtWidgets.QComboBox):
+                self.setCurrentIndex(-1)
+            elif isinstance(self, QtWidgets.QAbstractButton):
+                self.setChecked(False)
+        finally:
+            self.blockSignals(False)
 
     def on_config(self, cfg):
         self.setEnabled(cfg.writable in _WRITABLE)
@@ -173,6 +192,8 @@ class _LineSetter(_SetterMixin, QtWidgets.QLineEdit):
         QtWidgets.QLineEdit.keyPressEvent(self, event)
 
     def _commit(self):
+        if not self._editing:
+            return      # Enter on unedited text would write the rounded, displayed value
         try:
             value = self.parse(self.text())
         except (ValueError, ArgParserError) as e:
@@ -222,7 +243,7 @@ class QStringSetter(_LineSetter):
         if self._write_on_edit:
             self._editing = False
             self.setStyleSheet("")
-            self.write(text)
+            self.write_latest(text)     # one write at a time, in order
             return
         _LineSetter._on_edited(self, text)
 
@@ -285,6 +306,106 @@ class QArraySetter(_LineSetter):
             return str(value)
 
 
+class _ComboSetter(_SetterMixin, QtWidgets.QComboBox):
+    """ Combo of allowed values (ATK *ScalarComboEditor); write on selection """
+
+    modelName = model_name_property()
+
+    def __init__(self, parent=None, values=None):
+        QtWidgets.QComboBox.__init__(self, parent)
+        _SetterMixin.__init__(self)
+        self._values = []
+        self.activated.connect(self._on_activated)
+        if values:
+            self.setValuesList(values)
+
+    def setValuesList(self, values):
+        """ Allowed values (numbers or strings) """
+        self._values = [self.convert(v) for v in values]
+        self.blockSignals(True)
+        self.clear()
+        for v in self._values:
+            self.addItem(self.text_of(v))
+        self.setCurrentIndex(-1)
+        self.blockSignals(False)
+        if self.attributeValue() is not None:
+            self.on_value(self.attributeValue())
+
+    def valuesList(self):
+        return list(self._values)
+
+    def convert(self, v):
+        return v
+
+    def _on_activated(self, index):
+        if not (0 <= index < len(self._values)):
+            return
+        value = self._values[index]
+        if not self.confirm_write(self.text_of(value)):
+            self.revert()
+            return
+        self.write(value)
+
+    def on_value(self, value):
+        v = self.set_point(value, self.setPointMode)
+        self.blockSignals(True)
+        try:
+            # A value outside the list leaves the combo empty
+            self.setCurrentIndex(self._index_of(v))
+        finally:
+            self.blockSignals(False)
+
+    def _index_of(self, v):
+        for i, x in enumerate(self._values):
+            try:
+                if x == self.convert(v):
+                    return i
+            except (TypeError, ValueError):
+                pass
+        return -1
+
+
+class QNumberComboSetter(_ComboSetter):
+    """ Numeric scalar with a list of allowed values (ATK NumberScalarComboEditor) """
+
+    def convert(self, v):
+        return float(v)
+
+    def text_of(self, value):
+        cfg = self.attributeConfig()
+        try:
+            if cfg is not None:
+                return format_scalar(value, cfg.format, cfg.data_type)
+            return "{0:g}".format(float(value))
+        except (TypeError, ValueError):
+            return str(value)
+
+    def _on_activated(self, index):
+        if 0 <= index < len(self._values):
+            cfg = self.attributeConfig()
+            if cfg is not None and is_int_type(cfg.data_type):
+                self._values[index] = int(self._values[index])
+        _ComboSetter._on_activated(self, index)
+
+
+class QStringComboSetter(_ComboSetter):
+    """ String scalar with a list of allowed values (ATK StringScalarComboEditor) """
+
+    def convert(self, v):
+        return str(v)
+
+
+def parse_values_list(values):
+    """ Allowed values from an attribute property: one per line, or comma separated """
+    out = []
+    for v in values or []:
+        for part in str(v).split(","):
+            part = part.strip()
+            if part:
+                out.append(part)
+    return out
+
+
 def create_viewer(cfg, parent=None):
     """ Best read-only widget for an attribute configuration """
     if cfg.data_format == tango.AttrDataFormat.SCALAR and cfg.data_type == tango.CmdArgType.DevState:
@@ -292,13 +413,27 @@ def create_viewer(cfg, parent=None):
     return QValueLabel(parent)
 
 
-def create_setter(cfg, parent=None, wheel=True):
-    """ Best setter for an attribute configuration, or None when not writable """
+def create_setter(cfg, parent=None, wheel=True, values=None):
+    """ Best setter for an attribute configuration, or None when not writable.
+
+    ``values``: allowed values; a numeric or string scalar then gets a combo.
+    """
     if cfg.writable not in _WRITABLE:
         return None
     if cfg.data_format != tango.AttrDataFormat.SCALAR:
         return QArraySetter(parent)
     dt = cfg.data_type
+    if values:
+        if dt == tango.CmdArgType.DevString:
+            return QStringComboSetter(parent, values)
+        if is_numeric_type(dt):
+            # Check before building: a combo that fails half-way stays a child of parent
+            try:
+                [float(v) for v in values]
+            except (TypeError, ValueError):
+                pass
+            else:
+                return QNumberComboSetter(parent, values)
     if dt == tango.CmdArgType.DevBoolean:
         return QBooleanSetter(parent)
     if dt == tango.CmdArgType.DevEnum:

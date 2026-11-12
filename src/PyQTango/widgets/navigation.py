@@ -3,7 +3,7 @@
 QNavigationBar and NavigationHistory (Jive's NavigationBar / NavManager).
 """
 
-from ..qt import QtWidgets, Signal
+from ..qt import QtCore, QtWidgets, Signal
 
 
 class NavigationHistory(object):
@@ -77,7 +77,12 @@ class QNavigationBar(QtWidgets.QToolBar):
         self.search.setInsertPolicy(QtWidgets.QComboBox.InsertPolicy.NoInsert)
         self.search.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
         self.search.lineEdit().setPlaceholderText("Search (e.g. sys/tg_test/1, Server/instance, Device:...)")
-        self.search.lineEdit().returnPressed.connect(self._on_search)
+        # An editable combo reports one Enter twice (line edit, then combo): merge them
+        self._enter = QtCore.QTimer(self)
+        self._enter.setSingleShot(True)
+        self._enter.setInterval(0)
+        self._enter.timeout.connect(self._on_search)
+        self.search.lineEdit().returnPressed.connect(self._enter.start)
         self.search.activated.connect(self._on_activated)
         self.addWidget(self.search)
         self.search_action = self.addAction(style.standardIcon(sp.SP_FileDialogContentsView), "Search")

@@ -5,9 +5,9 @@ Created on Tue May 12 11:13:29 2020
 @author: Michele Devetta <michele.devetta@cnr.it>
 """
 
-from .qt import QtCore, QtGui, QtWidgets, Slot, Property
+from ..qt import QtCore, QtGui, QtWidgets, Slot, Property
 
-from .config import get_image_path
+from .icons import get_image_path
 
 
 class QStatusLed(QtWidgets.QLabel):
@@ -59,7 +59,8 @@ class QStatusLed(QtWidgets.QLabel):
             self.timer_id = None
         event.accept()
 
-    def state(self):
+    def getState(self):
+        """ The state (``led.state`` reads the same value: it is the Qt property) """
         return self.__state
 
     @Slot(int)
@@ -74,7 +75,7 @@ class QStatusLed(QtWidgets.QLabel):
             self.__state = QStatusLed.Off
         self.update_state()
 
-    state = Property(int, state, setState)
+    state = Property(int, getState, setState)
 
     def resizeEvent(self, event):
         if event.size().isValid():

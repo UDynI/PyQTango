@@ -6,31 +6,21 @@ Qt is imported through :mod:`PyQTango.qt`; see that module for the rules that
 keep code portable between PyQt5 and PyQt6.
 """
 
-__version__ = "0.2.1"
+__version__ = "0.3.0"
 
 from . import qt
 
-# Existing widgets (0.1 API, now built on the shared models)
-from .DeviceTree import QDeviceTree
-from .AttributeTree import QArchivedAttributeTree, QAttributeTree
-from .QStatusLed import QStatusLed
-from .QAttribute import QAttribute
-from .QCommandExecuter import QCommandExecuter
-from .QTangoMainWindow import QTangoMainWindow, QTangoDialog
-
-# QDigitDial
-from .QDigitDial import QDigitDial
-
-# Node types
-from .CommonTree import TreeItem, DeviceItem, AttributeItem, ServerItem
-
-# TangoUtil
-from . import TangoUtil
-from . import TangoWindows
-
-# New in 0.2
 from . import core
 from . import models
 from . import widgets
+
+# Legacy widgets (0.1 API, now in PyQTango.widgets and built on the shared models)
+from .widgets import (QAttribute, QCommandExecuter, QDigitDial, QStatusLed, QTangoMainWindow, QTangoDialog,
+                      QDeviceTree, QAttributeTree, TreeItem, DeviceItem, AttributeItem, ServerItem)
+
+# Legacy modules, still reachable as PyQTango.TangoUtil and PyQTango.TangoWindows
+from .core import tangoutil as TangoUtil
+from .widgets import windows as TangoWindows
+
 from .models import attribute_model, device_model, run_async, Job
 from .widgets import *  # noqa: F401,F403

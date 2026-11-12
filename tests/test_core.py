@@ -56,12 +56,13 @@ def test_image_rows_must_match():
         parse_attribute_value("[1,2][3]", T.DevLong, F.IMAGE)
 
 
-def test_pipe_and_conversions():
-    name, items = ArgParser('Blob,[a,D,1.5,2],[in,[Inner,[s,STR,"x y"]]]').pipe()
-    assert name == "Blob" and items[0]["name"] == "a" and list(items[0]["value"]) == [1.5, 2.0]
-    assert items[1]["value"][1][0]["value"] == ["x y"]
+def test_conversions():
     assert ArgParser("255,16").convert_to_hex() == "0xff,0x10"
     assert ArgParser("0xff").convert_to_dec() == "255"
+
+
+def test_no_pipe_support():
+    assert not hasattr(ArgParser, "pipe")
 
 
 def test_examples():
@@ -103,3 +104,33 @@ def test_error_records():
     except tango.DevFailed as e:
         rec = error_from_exception(e, "dev")
     assert rec.reason == "MyReason" and rec.message == "My description" and "origin()" in rec.html()
+
+
+# -- Review round 2 -------------------------------------------------------------------------------------
+
+def test_file_argument_is_an_absolute_path(tmp_path):
+    import tango
+    from PyQTango.core.argparser import parse_command_argin
+    f = tmp_path / "arg.txt"
+    f.write_text("hello from a file")
+    assert parse_command_argin("file:" + str(f), tango.CmdArgType.DevString) == "hello from a file"
+
+
+def test_enum_and_length_modifier_formats():
+    import tango
+    from PyQTango.core.formatting import format_scalar, format_digits
+    assert format_scalar(-1, data_type=tango.CmdArgType.DevEnum, enum_labels=["a", "b"]) == "-1"
+    assert format_scalar(1, data_type=tango.CmdArgType.DevEnum, enum_labels=["a", "b"]) == "b"
+    assert format_scalar(1.5, "%6.3lf") == " 1.500" and format_scalar(7, "%ld") == "7"
+    assert format_digits("%6.2lf") == (3, 2)
+
+
+def test_black_box_identical_lines():
+    from PyQTango.core.blackbox import BlackBox
+    old = ["11/11/2026 08:06:07:30 : Operation ping requested from vm",
+           "11/11/2026 08:06:07:20 : Operation command_list_query_2 requested from vm"]
+    box = BlackBox()
+    box.update(old)
+    # two more identical pings in the same centisecond as the last one we had
+    assert box.update([old[0], old[0]] + old) == 2 and box.contiguous
+    assert len(box.records) == 4
