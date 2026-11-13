@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Widget documentation in `docs/`: every widget with an example and a screenshot;
+  `docs/make_screenshots.py` renders the images again.
+
 ## 0.3.1
 
 - `TangoUtil.getAllLiveDevices()`, `getAllLiveAttributes()` and `getAllLiveDevicesByClass()`

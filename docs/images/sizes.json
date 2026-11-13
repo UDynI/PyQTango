@@ -1,0 +1,150 @@
+{
+ "attribute_properties": [
+  297,
+  456
+ ],
+ "black_box": [
+  860,
+  380
+ ],
+ "boolean_label": [
+  300,
+  148
+ ],
+ "boolean_trend": [
+  800,
+  320
+ ],
+ "chart": [
+  640,
+  380
+ ],
+ "chart_properties": [
+  260,
+  441
+ ],
+ "command_combo": [
+  320,
+  50
+ ],
+ "console_navigation": [
+  620,
+  360
+ ],
+ "diagnostic": [
+  900,
+  250
+ ],
+ "editors": [
+  560,
+  300
+ ],
+ "error_dialog": [
+  480,
+  160
+ ],
+ "error_history": [
+  700,
+  220
+ ],
+ "icons": [
+  349,
+  126
+ ],
+ "image": [
+  760,
+  560
+ ],
+ "image_string_raw": [
+  820,
+  304
+ ],
+ "job_progress": [
+  200,
+  97
+ ],
+ "lazy_tree_property_table": [
+  760,
+  300
+ ],
+ "legacy_digitdial_led": [
+  562,
+  286
+ ],
+ "legacy_executer": [
+  460,
+  280
+ ],
+ "legacy_qattribute": [
+  420,
+  198
+ ],
+ "legacy_trees": [
+  900,
+  340
+ ],
+ "level_dialogs": [
+  1100,
+  330
+ ],
+ "multi_change": [
+  520,
+  360
+ ],
+ "polling_panel": [
+  620,
+  360
+ ],
+ "polling_profiler": [
+  900,
+  560
+ ],
+ "scalar_list": [
+  560,
+  330
+ ],
+ "setter_states": [
+  320,
+  70
+ ],
+ "setters": [
+  420,
+  215
+ ],
+ "spectrum": [
+  600,
+  340
+ ],
+ "spectrum_lists": [
+  720,
+  220
+ ],
+ "state_status": [
+  560,
+  200
+ ],
+ "switch": [
+  330,
+  103
+ ],
+ "table_dialog": [
+  520,
+  260
+ ],
+ "text_dialog": [
+  520,
+  300
+ ],
+ "trend": [
+  900,
+  400
+ ],
+ "value_label": [
+  520,
+  154
+ ],
+ "wheel": [
+  300,
+  94
+ ]
+}

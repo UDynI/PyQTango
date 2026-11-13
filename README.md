@@ -1,7 +1,9 @@
 # PyQTango
 
-Library of event-aware Tango widgets for Python and Qt. Version 0.2 runs on
-**PyQt5** (default, compatible with the existing lab GUIs) and **PyQt6**.
+Library of event-aware Tango widgets for Python and Qt. It runs on **PyQt5**
+(default, compatible with the existing lab GUIs) and **PyQt6**.
+
+**[Widget documentation](docs/README.md)**: every widget with an example and a screenshot.
 
 ## Install
 
@@ -94,6 +96,8 @@ set `setPointMode = "always"` for the ATK behaviour. `setNeedsConfirmation(True)
 asks before each write, and a failed write puts the setter back to the device value.
 
 ## Widgets
+
+Each widget is described, with an example and a screenshot, in [docs/](docs/README.md).
 
 | Widget | Purpose |
 | --- | --- |
