@@ -222,6 +222,8 @@ class QTangoChart(QtWidgets.QWidget):
         for axis in ("left", "bottom", "right"):
             self.plot_item.getAxis(axis).setPen(pg.mkPen("#404040"))
             self.plot_item.getAxis(axis).setTextPen(pg.mkPen("#202020"))
+            # Show the values as they are (JLChart): no "(x0.001)" rescaling of small ranges
+            self.plot_item.getAxis(axis).enableAutoSIPrefix(False)
         self._title = ""
         if title:
             self.set_title(title)
@@ -444,6 +446,7 @@ class QTangoChart(QtWidgets.QWidget):
         self._time_axis = on
         axis = pg.DateAxisItem(orientation="bottom") if on else pg.AxisItem(orientation="bottom")
         self.plot_item.setAxisItems({"bottom": axis})
+        axis.enableAutoSIPrefix(False)
         axis.setPen(pg.mkPen("#404040"))
         axis.setTextPen(pg.mkPen("#202020"))
         self.apply_axes()

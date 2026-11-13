@@ -321,3 +321,14 @@ def test_context_menus_are_deleted(qtbot, chart, monkeypatch):
         chart._show_menu(QtCore.QPoint(10, 10))
     QtCore.QCoreApplication.sendPostedEvents(None, QtCore.QEvent.Type.DeferredDelete)
     assert chart.findChildren(QtWidgets.QMenu) == []
+
+
+def test_axes_show_values_as_they_are(qtbot, chart):
+    chart.set_curve("a", [0.0, 0.35, 0.7])
+    chart.set_axis_labels(x="Position", y="Signal (V)")
+    chart.set_time_axis(True)
+    chart.set_time_axis(False)
+    qtbot.wait(50)
+    for side in ("left", "bottom", "right"):
+        axis = chart.plot_item.getAxis(side)
+        assert not axis.autoSIPrefix and "(x" not in axis.labelString()

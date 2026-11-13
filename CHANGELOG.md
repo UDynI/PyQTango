@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.1
+
+- `TangoUtil.getAllLiveDevices()`, `getAllLiveAttributes()` and `getAllLiveDevicesByClass()`
+  with a `dbhost`/`port` now check and read the devices on that database (they used the
+  default `TANGO_HOST`, so every device looked dead and `QAttributeTree(dbhost, port)` was
+  empty). `getAllLiveAttributes()` then returns fully qualified attribute names;
+  `checkDevicesAreLive()` takes `dbhost`/`port` too.
+- `QTangoChart` shows axis values as they are: pyqtgraph's automatic rescaling of small
+  ranges ("Signal (x0.001)" with ticks of 700 for 0.7) is off.
+- `QTableDialog` and `QTextDialog` are exported from `PyQTango.widgets`, as its docstring said.
+
 ## 0.3.0
 
 Removed `QArchivedAttributeTree` (tree of the attributes of the old HDB archiving system, no

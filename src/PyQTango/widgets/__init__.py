@@ -56,6 +56,7 @@ from .editors import QCodeEditor, QSearchableEditor, QCompleterLineEdit
 from .commands import QCommandCombo
 from .attrprops import QAttributePropertyDialog
 from .diagnostic import QRefresherDiagnostic
+from .dialogs import QTableDialog, QTextDialog
 from .base import tango_widgets, freeze_widgets
 # Legacy widgets
 from .attribute import QAttribute
@@ -81,7 +82,7 @@ __all__ = [
     "ConfigColumn", "ConfigAction", "ConfigTab", "ConfigTableModel", "QConfigPanel", "QPollingPanel",
     "QCodeEditor", "QSearchableEditor", "QCompleterLineEdit",
     "QNumberComboSetter", "QStringComboSetter", "QCommandCombo", "QAttributePropertyDialog",
-    "QRefresherDiagnostic", "tango_widgets", "freeze_widgets",
+    "QRefresherDiagnostic", "QTableDialog", "QTextDialog", "tango_widgets", "freeze_widgets",
     "QAttribute", "QCommandExecuter", "QDigitDial", "QStatusLed", "QTangoMainWindow", "QTangoDialog",
     "TangoEvents2Qt", "WindowScaling", "TreeItem", "DeviceItem", "AttributeItem", "ServerItem",
     "QDeviceTree", "QAttributeTree",

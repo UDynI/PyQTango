@@ -192,3 +192,10 @@ def test_job_progress_dialog_deletes_itself(qtbot):
         pass
     QtCore.QCoreApplication.sendPostedEvents(None, QtCore.QEvent.Type.DeferredDelete)
     assert is_deleted(dlg)
+
+
+def test_result_dialogs_are_exported():
+    import PyQTango
+    from PyQTango import widgets
+    assert widgets.QTableDialog is QTableDialog and widgets.QTextDialog is QTextDialog
+    assert PyQTango.QTableDialog is QTableDialog and "QTextDialog" in widgets.__all__

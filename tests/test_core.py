@@ -134,3 +134,42 @@ def test_black_box_identical_lines():
     # two more identical pings in the same centisecond as the last one we had
     assert box.update([old[0], old[0]] + old) == 2 and box.contiguous
     assert len(box.records) == 4
+
+
+def test_tangoutil_uses_the_given_database(monkeypatch):
+    """ With dbhost/port, devices are opened on that database, not on the default TANGO_HOST """
+    import types
+    from PyQTango.core import tangoutil as TU
+    opened = []
+
+    class FakeDatabase(object):
+        def __init__(self, *args):
+            self.args = args
+
+        def command_inout(self, cmd, query):
+            return [[], ["lab/laser/1", "DocDevice/1", "DocDevice", "lab/dead/1", "Dead/1", "Dead"]]
+
+    class FakeProxy(object):
+        def __init__(self, name):
+            opened.append(name)
+            self.name = name
+
+        def set_timeout_millis(self, ms):
+            pass
+
+        def ping(self):
+            if "dead" in self.name:
+                raise TU.PT.DevFailed()
+
+        def attribute_list_query_ex(self):
+            return [types.SimpleNamespace(name="power", data_format=0, data_type=5)]
+    monkeypatch.setattr(TU.PT, "Database", FakeDatabase)
+    monkeypatch.setattr(TU.PT, "DeviceProxy", FakeProxy)
+    attrs = TU.getAllLiveAttributes("dbhost", 10123)
+    assert [a["attribute"] for a in attrs] == ["tango://dbhost:10123/lab/laser/1/power"]
+    assert all(n.startswith("tango://dbhost:10123/") for n in opened)
+    live = TU.getAllLiveDevices("dbhost", 10123)
+    assert [d["device"] for d in live] == ["lab/laser/1"]        # plain names in the result, as before
+    opened.clear()
+    TU.getAllLiveDevices()                                       # no dbhost: plain names (TANGO_HOST)
+    assert opened and not any(n.startswith("tango://") for n in opened)

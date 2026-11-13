@@ -116,7 +116,7 @@ asks before each write, and a failed write puts the setter back to the device va
 | `QImageViewer`, `QStringImageViewer`, `QRawImageViewer` (`.image`) | Images: colour maps, levels, histogram, profiles, value under the cursor, Save as PNG/TIFF/CSV; string images as a table; DevEncoded JPEG, GRAY8, GRAY16, RGB24 |
 | `QBlackBoxView`, `QBlackBoxDialog` (`.blackbox`) | A device's black box: filter, auto-update, Top counts |
 | `QPollingProfiler`, `QPollingProfilerDialog` (`.profiler`) | Polling profile from `DevPollStatus`: duration, drift and history charts |
-| `QTableDialog`, `QTextDialog` (`.dialogs`) | Result tables (filter, numeric sort, copy, save) and long texts (loaded in chunks, find, save) |
+| `QTableDialog`, `QTextDialog` | Result tables (filter, numeric sort, copy, save) and long texts (loaded in chunks, find, save) |
 | `QStartupLevelDialog`, `QServerPickerDialog`, `QLevelWalkerDialog` (`.levels`) | Starter dialogs: startup level and controlled flag, servers to start on a host, start/stop by level with a confirm per level and a results table |
 | `state_icon`, `host_icon`, `ball_icon` (`.icons`) | Device and host state icons |
 | `LazyTreeModel`, `TreeNode` | Asynchronous lazy tree model |

@@ -19,6 +19,13 @@ def _database(dbhost=None, port=10000):
     return PT.Database()
 
 
+def _fq(name, dbhost=None, port=10000):
+    """ ``name`` on the database ``dbhost:port`` (a plain name would use the default TANGO_HOST) """
+    if dbhost is None or name.lower().startswith("tango://"):
+        return name
+    return "tango://{0}:{1}/{2}".format(dbhost, port, name)
+
+
 def getAllRegisteredDevices(dbhost=None, port=10000):
     """ Get all registered devices
         For each device return a dict with ('device': <Device>, 'server': <Server>, 'class': <Class>)
@@ -43,9 +50,9 @@ def getAllRegisteredDevices(dbhost=None, port=10000):
     return dev
 
 
-def _check_alive(dev):
+def _check_alive(dev, dbhost=None, port=10000):
     try:
-        d = PT.DeviceProxy(dev['device'])
+        d = PT.DeviceProxy(_fq(dev['device'], dbhost, port))
         d.set_timeout_millis(1000)
         d.ping()
         dev['alive'] = True
@@ -54,12 +61,13 @@ def _check_alive(dev):
     return dev
 
 
-def checkDevicesAreLive(dev_list, max_workers=16):
+def checkDevicesAreLive(dev_list, max_workers=16, dbhost=None, port=10000):
     """ Check if the devices specified in the list of dict are live. Add an alive field to the dicts.
+        ``dbhost``/``port``: the database the device names belong to (default TANGO_HOST).
     """
     out = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = [executor.submit(_check_alive, d) for d in dev_list]
+        futures = [executor.submit(_check_alive, d, dbhost, port) for d in dev_list]
         for future in concurrent.futures.as_completed(futures):
             try:
                 out.append(future.result())
@@ -73,21 +81,24 @@ def getAllLiveDevices(dbhost=None, port=10000):
         For each device return a dict with ('device': <Device>, 'server': <Server>, 'class': <Class>)
     """
     alive = []
-    for d in checkDevicesAreLive(getAllRegisteredDevices(dbhost, port)):
+    for d in checkDevicesAreLive(getAllRegisteredDevices(dbhost, port), dbhost=dbhost, port=port):
         if d.pop('alive', False):
             alive.append(d)
     return alive
 
 
 def getAllLiveAttributes(dbhost=None, port=10000):
-    """ Get all attributes from live devices
+    """ Get all attributes from live devices.
+        With ``dbhost`` the attribute names are fully qualified (tango://host:port/...),
+        so they reach that database and not the default TANGO_HOST.
     """
     attr_list = []
     for d in getAllLiveDevices(dbhost, port):
         try:
-            dev = PT.DeviceProxy(d['device'])
+            name = _fq(d['device'], dbhost, port)
+            dev = PT.DeviceProxy(name)
             for conf in dev.attribute_list_query_ex():
-                attr_list.append({'attribute': d['device'] + "/" + conf.name,
+                attr_list.append({'attribute': name + "/" + conf.name,
                                   'data_format': conf.data_format, 'data_type': conf.data_type})
         except PT.DevFailed:
             pass
@@ -103,4 +114,4 @@ def getAllLiveDevicesByClass(class_list, dbhost=None, port=10000):
         datum = db.get_device_exported_for_class(cl)
         for d in datum.value_string:
             devs.append({'device': d})
-    return checkDevicesAreLive(devs)
+    return checkDevicesAreLive(devs, dbhost=dbhost, port=port)
