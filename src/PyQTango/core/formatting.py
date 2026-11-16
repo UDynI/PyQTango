@@ -58,16 +58,23 @@ def is_numeric_type(data_type):
     return data_type in _INT_TYPES or data_type in _FLOAT_TYPES
 
 
+def _member(enum, value):
+    """ Named member of a Tango enum for a member or an int: in PyTango 9.5 ``DevState(0)`` is an
+    unnamed value whose str() is "tango._tango.DevState(0)", not ``DevState.ON`` """
+    values = getattr(enum, "values", None)
+    return values[int(value)] if values is not None else enum(value)
+
+
 def state_name(state):
     try:
-        return str(tango.DevState(state))
+        return str(_member(tango.DevState, state))
     except Exception:
         return str(state)
 
 
 def quality_name(quality):
     try:
-        return str(tango.AttrQuality(quality))
+        return str(_member(tango.AttrQuality, quality))
     except Exception:
         return str(quality)
 

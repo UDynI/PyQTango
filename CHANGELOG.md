@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.3.3
+
+PyTango 9.5 compatibility (tested with PyTango 9.5.1 and 10.3):
+
+- Attribute models no longer fail on PyTango 9.5, which does not export
+  `tango.AttrMemorizedType`: memorized attributes are recognised by name. This broke setters,
+  the wheel, scalar lists and spectrum viewers.
+- `state_name()` and `quality_name()` give "ON" and "ATTR_VALID" instead of
+  "tango._tango.DevState(0)": PyTango 9.5 does not map an integer to the named member.
+- `DatabaseService.device_info()` reads the host with `DbGetDeviceInfo` when `DbDevFullInfo`
+  has none (PyTango 9.5).
+- Attribute property histories have the attribute and property names the right way round on
+  PyTango 9, which swaps `DbHistory.get_name()` and `get_attribute_name()`.
+- Tests: `TANGO_TEST_DB_PYTHON` names the Python that runs the test database server. PyTango
+  9.5's own server does not start, so a PyTango 9.5 run uses a PyTango 10 server.
+
 ## 0.3.2
 
 - The Qt binding is an extra: `pip install .[pyqt5]` or `.[pyqt6]`. `pip install .` no longer

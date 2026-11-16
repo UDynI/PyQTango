@@ -27,6 +27,10 @@ log = logging.getLogger(__name__)
 
 DEFAULT_PORT = 10000
 
+# PyTango 9 returns the attribute name from DbHistory.get_name() and the property name from
+# get_attribute_name() in attribute property histories
+_HISTORY_NAMES_SWAPPED = int(tango.__version__.split(".")[0]) < 10
+
 #: Server startup information (``controlled`` is the Starter "mode")
 ServerInfo = namedtuple("ServerInfo", "name host controlled level")
 
@@ -236,7 +240,10 @@ class DatabaseService(object):
 
     def device_info(self, device):
         i = self.db.get_device_info(device)
-        return DeviceInfo(i.name, i.ds_full_name, i.class_name, bool(i.exported), i.host, i.pid,
+        host = getattr(i, "host", None)
+        if host is None:        # PyTango 9.5's DbDevFullInfo has no host
+            host = self.db.command_inout("DbGetDeviceInfo", device)[1][4]
+        return DeviceInfo(i.name, i.ds_full_name, i.class_name, bool(i.exported), host, i.pid,
                           i.version, i.started_date, i.stopped_date, i.ior)
 
     def device_alias(self, device):
@@ -507,8 +514,11 @@ class DatabaseService(object):
                 else list(h.get_value())
             # Some database servers mark a deletion only by the value "DELETED"
             deleted = bool(h.is_deleted()) or values == ["DELETED"]
+            name = h.get_name()
             att = h.get_attribute_name() if with_attribute and hasattr(h, "get_attribute_name") else ""
-            out.append(PropertyHistory(h.get_date(), h.get_name(), None if deleted else values, deleted, att))
+            if att and _HISTORY_NAMES_SWAPPED:
+                name, att = att, name
+            out.append(PropertyHistory(h.get_date(), name, None if deleted else values, deleted, att))
         return out
 
     def device_property_history(self, device, pattern="*"):

@@ -64,6 +64,7 @@ def test_properties(dbs):
 def test_infos(dbs):
     info = dbs.device_info("lab/power/ps1")
     assert info.server == "PowerSupply/lab" and info.klass == "PowerSupply" and not info.exported
+    assert info.host == "nada"      # never exported (PyTango 9.5 reads it with DbGetDeviceInfo)
     # The SQLite database stores blanks for unset startup info: no exception
     assert dbs.server_info("PowerSupply/lab") == ServerInfo("PowerSupply/lab", "", False, 0)
     assert "Device" in dbs.info() or "TANGO" in dbs.info()

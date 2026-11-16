@@ -290,8 +290,8 @@ class TangoAttributeModel(QtCore.QObject):
             return False
         if cfg.writable == tango.AttrWriteType.WRITE:
             return True
-        return getattr(cfg, "memorized", None) in (tango.AttrMemorizedType.MEMORIZED,
-                                                   tango.AttrMemorizedType.MEMORIZED_WRITE_INIT)
+        # By name: PyTango 9.5 does not export AttrMemorizedType from the tango module
+        return getattr(getattr(cfg, "memorized", None), "name", None) in ("MEMORIZED", "MEMORIZED_WRITE_INIT")
 
     def attach(self):
         """ Register one more user; starts the model on first use """

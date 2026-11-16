@@ -2,7 +2,9 @@
 """
 Start a throw-away Tango database server for tests and demos.
 
-By default: PyTango's database server on a fresh SQLite file.
+By default: PyTango's database server on a fresh SQLite file. ``TANGO_TEST_DB_PYTHON`` names
+the Python that runs it (default: the one running the tests). PyTango 9.5's server does not
+start, so test a PyTango 9.5 client against the server of a PyTango 10 environment.
 
 With ``TANGO_TEST_MARIADB=mysql://user:password@host:port`` set: the C++
 ``Databaseds`` on a fresh MariaDB/MySQL schema (``tango_test_<pid>_<n>``), created
@@ -35,6 +37,7 @@ from urllib.parse import urlparse, unquote
 import tango
 
 MARIADB_ENV = "TANGO_TEST_MARIADB"
+DB_PYTHON_ENV = "TANGO_TEST_DB_PYTHON"
 DEBIAN_SQL = "/usr/share/dbconfig-common/data/tango-db/install/mysql"
 _schemas = itertools.count(1)
 
@@ -57,7 +60,8 @@ def _start_sqlite(workdir, timeout):
     env["PYTANGO_DATABASE_NAME"] = os.path.join(str(workdir), "tango_test.db")
     env.pop("TANGO_HOST", None)
     proc = subprocess.Popen(
-        [sys.executable, "-m", "tango.databaseds.database", "--port", "0", "--host", "127.0.0.1",
+        [os.environ.get(DB_PYTHON_ENV, sys.executable), "-m", "tango.databaseds.database",
+         "--port", "0", "--host", "127.0.0.1",
          "--print-host-port", "2"],
         cwd=str(workdir), env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
     deadline = time.time() + timeout

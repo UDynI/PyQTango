@@ -6,7 +6,7 @@ Qt is imported through :mod:`PyQTango.qt`; see that module for the rules that
 keep code portable between PyQt5 and PyQt6.
 """
 
-__version__ = "0.3.2"
+__version__ = "0.3.3"
 
 from . import qt
 
