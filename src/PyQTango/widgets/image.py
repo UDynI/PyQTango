@@ -13,18 +13,23 @@ Image viewers (ATK ``NumberImageViewer``, ``StringImageTableViewer``, ``RawImage
 @author: Michele Devetta <michele.devetta@cnr.it>
 """
 
+import gc
+import types
+
 import numpy as np
 
-from ..qt import QtGui, QtWidgets, Qt, Signal
+from ..qt import QtGui, QtWidgets, Qt, Signal, connect_destroyed
 from .base import TangoAttributeWidget, model_name_property
 import pyqtgraph as pg
 
 __all__ = ["QImageViewer", "QStringImageViewer", "QRawImageViewer", "decode_encoded", "COLOR_MAPS",
            "EncodedImageError"]
 
-#: Colour maps offered by QImageViewer (label -> pyqtgraph name; "Gray" is built in)
-COLOR_MAPS = {"Gray": None, "Viridis": "viridis", "Inferno": "inferno", "Plasma": "plasma",
-              "Magma": "magma", "Cividis": "cividis", "Turbo": "turbo", "Fire": "CET-L3"}
+#: Colour maps offered by QImageViewer (label -> pyqtgraph name; "Gray" is built in).
+#: Only those of the installed pyqtgraph: Turbo needs pyqtgraph 0.13.4 or later.
+COLOR_MAPS = {label: name for label, name in (
+    ("Gray", None), ("Viridis", "viridis"), ("Inferno", "inferno"), ("Plasma", "plasma"), ("Magma", "magma"),
+    ("Cividis", "cividis"), ("Turbo", "turbo"), ("Fire", "CET-L3")) if name is None or name in pg.colormap.listMaps()}
 
 
 def _colormap(label):
@@ -32,6 +37,18 @@ def _colormap(label):
     if name is None:
         return pg.ColorMap([0.0, 1.0], [(0, 0, 0), (255, 255, 255)])
     return pg.colormap.get(name)
+
+
+_REGISTER_CODES = tuple(c for c in pg.ViewBox.register.__code__.co_consts if isinstance(c, types.CodeType))
+
+
+def _protect_view_registration(vb):
+    """ pyqtgraph's ViewBox.register() connects a closure to ``destroyed``: move it to
+    connect_destroyed(), or the garbage collector can clear it before Qt calls it (see PyQTango.qt) """
+    for f in gc.get_referents(vb):      # PyQt reports the slots of vb's signals here
+        if isinstance(f, types.FunctionType) and f.__code__ in _REGISTER_CODES:
+            vb.destroyed.disconnect(f)
+            connect_destroyed(vb, f)
 
 
 class EncodedImageError(ValueError):
@@ -118,6 +135,8 @@ class QImageViewer(TangoAttributeWidget, QtWidgets.QWidget):
         self.bar.setVisible(toolbar)
         split = QtWidgets.QSplitter(Qt.Orientation.Vertical, self)
         self.view = pg.ImageView(split)
+        for vb in (self.view.view, self.view.ui.roiPlot.getPlotItem().vb):     # named "ImageView", "ImageView_ROI"
+            _protect_view_registration(vb)
         self.view.ui.roiBtn.hide()
         self.view.ui.menuBtn.hide()
         split.addWidget(self.view)

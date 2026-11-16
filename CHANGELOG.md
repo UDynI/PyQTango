@@ -1,7 +1,26 @@
 # Changelog
 
-## Unreleased
+## 0.3.2
 
+- The Qt binding is an extra: `pip install .[pyqt5]` or `.[pyqt6]`. `pip install .` no longer
+  installs PyQt5, and uses the binding already installed (conda, system packages);
+  `.[pyqt6]` no longer brings PyQt5 along.
+- pyqtgraph 0.12.4 or later for the plot widgets (was 0.13); tested with 0.12.4 and 0.14.
+- `QImageViewer` offers only the colour maps of the installed pyqtgraph: Turbo needs
+  pyqtgraph 0.13.4, and choosing it with an older version raised `FileNotFoundError`.
+- Fixed a segmentation fault when a window holding a `QSpectrumViewer`, a `QImageViewer` or
+  any attribute widget was garbage-collected and its widgets were deleted later (for example
+  by `deleteLater()`). PyQt reports a slot connected to `destroyed` as referenced by the
+  widget's wrapper, so the cyclic garbage collector could clear the cleanup closure (NULL
+  closure and globals) while Qt still held it, and calling it crashed. In the other
+  collection order the cleanup was silently skipped, and the widget's models were never
+  released.
+- New `connect_destroyed(obj, callback)` and `disconnect_destroyed(obj, handler)` in
+  `PyQTango.qt` keep such handlers safe from the collector. `TangoAttributeWidget`,
+  `QSpectrumViewer` and `QTrend` use them.
+- `QImageViewer` moves the `destroyed` closures that pyqtgraph's `ViewBox.register()`
+  connects for its two named views ("ImageView", "ImageView_ROI") onto
+  `connect_destroyed()`. These closures have the same flaw.
 - Widget documentation in `docs/`: every widget with an example and a screenshot;
   `docs/make_screenshots.py` renders the images again.
 

@@ -36,6 +36,7 @@ __all__ = [
     "Signal", "Slot", "Property", "QAction", "QActionGroup", "QShortcut",
     "enum_value", "event_pos", "event_global_pos", "no_window_flags",
     "make_application", "load_ui", "is_qt6", "is_deleted", "sip", "fixed_font",
+    "connect_destroyed", "disconnect_destroyed",
 ]
 
 _SUPPORTED = ("PyQt5", "PyQt6")
@@ -83,6 +84,33 @@ def is_deleted(obj):
         return sip.isdeleted(obj)
     except TypeError:
         return False
+
+
+# Handlers of connect_destroyed(), kept reachable from here. PyQt reports a slot's callable to the
+# garbage collector as referenced by the sender's wrapper: when that wrapper is cyclic garbage while
+# the C++ object lives on (owned by a C++ parent), the collector clears the callable (NULL closure
+# and globals) and the slot proxy keeps it; ``destroyed`` then calls it and the process crashes.
+_destroy_handlers = set()
+
+
+def connect_destroyed(obj, callback):
+    """ Call ``callback()`` once the C++ object of ``obj`` is destroyed (``callback`` must not
+    reference ``obj``). Returns the handler, to pass to :func:`disconnect_destroyed`. """
+    def handler(*_):
+        _destroy_handlers.discard(handler)
+        callback()
+    _destroy_handlers.add(handler)
+    obj.destroyed.connect(handler)
+    return handler
+
+
+def disconnect_destroyed(obj, handler):
+    """ Undo :func:`connect_destroyed` """
+    _destroy_handlers.discard(handler)
+    try:
+        obj.destroyed.disconnect(handler)
+    except (TypeError, RuntimeError):
+        pass
 
 
 QT_VERSION = QtCore.QT_VERSION_STR

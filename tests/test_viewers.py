@@ -372,6 +372,15 @@ def test_image_viewer_bad_values(qtbot):
     assert v.profile_data() is not None and v.view.getLevels() == (0.0, 5.0)
 
 
+def test_image_viewer_color_maps(qtbot):
+    from PyQTango.widgets.image import COLOR_MAPS
+    v = QImageViewer()
+    qtbot.addWidget(v)
+    for label in COLOR_MAPS:        # every map offered loads with the installed pyqtgraph
+        v.set_colormap(label)
+        assert v.colormap_name() == label
+
+
 def test_spectrum_viewer_releases_x_models(qtbot, device_name):
     from PyQTango.qt import sip
     v = QSpectrumViewer()

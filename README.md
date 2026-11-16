@@ -8,12 +8,14 @@ Library of event-aware Tango widgets for Python and Qt. It runs on **PyQt5**
 ## Install
 
 ```
-pip install .            # PyQt5 (default)
-pip install .[pyqt6]     # also install PyQt6
-pip install .[plot]      # pyqtgraph, for QTangoChart and QImageViewer
+pip install .[pyqt5]         # with PyQt5
+pip install .[pyqt6]         # with PyQt6
+pip install .[pyqt5,plot]    # also pyqtgraph, for QTangoChart and QImageViewer
+pip install .                # uses the PyQt5 or PyQt6 already installed (conda, system packages)
 ```
 
-Requires Python ≥ 3.7, PyTango ≥ 9.5 and numpy.
+Requires Python ≥ 3.7, PyTango ≥ 9.5, numpy, and PyQt5 ≥ 5.15 or PyQt6 ≥ 6.4.
+The plot widgets need pyqtgraph ≥ 0.12.4.
 
 ## Choosing the Qt binding
 

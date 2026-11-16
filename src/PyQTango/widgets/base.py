@@ -35,7 +35,7 @@ window.
 
 import logging
 
-from ..qt import Property, is_deleted
+from ..qt import Property, is_deleted, connect_destroyed, disconnect_destroyed
 from ..models.registry import attribute_model, device_model, registry
 from ..models.attribute import TangoAttributeModel
 from ..models.device import TangoDeviceModel
@@ -88,10 +88,7 @@ class TangoAttributeWidget(object):
                 except (TypeError, RuntimeError):
                     pass
             if self._tdestroy is not None:
-                try:
-                    self.destroyed.disconnect(self._tdestroy)
-                except (TypeError, RuntimeError):
-                    pass
+                disconnect_destroyed(self, self._tdestroy)
                 self._tdestroy = None
             if self._tattached:
                 if self._tfrozen:
@@ -135,8 +132,7 @@ class TangoAttributeWidget(object):
             for sig, slot in self._tango_connections(model):
                 sig.connect(slot)
         self._tattached = True
-        self._tdestroy = _release_on_destroy(model, self._tfrozen_flag)
-        self.destroyed.connect(self._tdestroy)
+        self._tdestroy = connect_destroyed(self, _release_on_destroy(model, self._tfrozen_flag))
         model.attach()
         if self._tfrozen:
             model.suspend()
@@ -148,10 +144,7 @@ class TangoAttributeWidget(object):
             return
         self._tattached = False
         if self._tdestroy is not None:
-            try:
-                self.destroyed.disconnect(self._tdestroy)
-            except (TypeError, RuntimeError):
-                pass
+            disconnect_destroyed(self, self._tdestroy)
             self._tdestroy = None
         try:
             if self._tfrozen:

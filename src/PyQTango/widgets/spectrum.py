@@ -18,7 +18,7 @@ Spectrum viewers (ATK ``NumberSpectrumViewer`` and the string, state and boolean
 
 import numpy as np
 
-from ..qt import QtWidgets, Qt, Signal
+from ..qt import QtWidgets, Qt, Signal, connect_destroyed
 from ..core.proxies import proxy_cache
 from ..core.formatting import state_name
 from ..models.worker import run_async
@@ -75,7 +75,7 @@ class QSpectrumViewer(TangoAttributeWidget, QTangoChart):
         self._show_set_point = show_set_point
         self._xrange = None
         self._xmodels = []          # [(model, slot)]: edited in place, the destroy handler shares it
-        self.destroyed.connect(_release_on_destroy(self._xmodels))
+        connect_destroyed(self, _release_on_destroy(self._xmodels))
         self._user_title = ""
         self._error_text = ""
         self._xvalues = [None, None]

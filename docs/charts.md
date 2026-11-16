@@ -169,7 +169,7 @@ states.setModel("lab/laser/1/channel_states")
 
 A numeric image (ATK `NumberImageViewer`), rows down the Y axis:
 
-* colour maps: Gray, Viridis, Inferno, Plasma, Magma, Cividis, Turbo, Fire;
+* colour maps: Gray, Viridis, Inferno, Plasma, Magma, Cividis, Turbo (pyqtgraph 0.13.4 or later), Fire;
 * automatic levels, or fixed ones typed in the toolbar or set with `set_levels(lo, hi)`;
 * a histogram with draggable levels;
 * zoom and pan with the mouse; the value under the cursor in the bottom label;

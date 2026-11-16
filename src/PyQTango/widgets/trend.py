@@ -34,7 +34,7 @@ import time
 import numpy as np
 import tango
 
-from ..qt import QtCore, QtGui, QtWidgets, Qt, Signal, QAction, QActionGroup
+from ..qt import QtCore, QtGui, QtWidgets, Qt, Signal, QAction, QActionGroup, connect_destroyed
 from ..core.names import split_attribute_name, normalize_name
 from ..core.formatting import format_value, quality_name, state_name
 from ..models.registry import attribute_model
@@ -287,7 +287,7 @@ class QTrend(QtWidgets.QWidget):
         # What the destroy handler must undo (it cannot use the widget, which is going away)
         self._owner = ("QTrend", id(self))
         self._bound = {"owner": self._owner, "models": {}, "stopped": False}
-        self.destroyed.connect(_release_on_destroy(self._bound))
+        connect_destroyed(self, _release_on_destroy(self._bound))
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         self.toolbar = QtWidgets.QToolBar(self)
